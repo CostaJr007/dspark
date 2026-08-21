@@ -53,6 +53,18 @@ def start_interactive_session(
     curator_model: str = "deepseek-v4-flash",
 ):
     """Interactive Terminal User Interface (TUI) in the style of Grok Build & Claude Code."""
+    try:
+        from .tui import GrokBuildTUI
+        tui = GrokBuildTUI(
+            working_dir=working_dir,
+            generator_model=generator_model,
+            curator_model=curator_model,
+        )
+        tui.run()
+        return
+    except Exception as e:
+        sys.stderr.write(f"TUI notice: {e}\n")
+
     current_gen = generator_model
     current_cur = curator_model
 
