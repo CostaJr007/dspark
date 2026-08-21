@@ -51,14 +51,16 @@ def start_interactive_session(
     working_dir: Optional[str] = None,
     generator_model: str = "gpt-4o-mini",
     curator_model: str = "deepseek-v4-flash",
+    theme: str = "bloomberg",
 ):
-    """Interactive Terminal User Interface (TUI) in the style of Grok Build & Claude Code."""
+    """Interactive Terminal User Interface (TUI) with Bloomberg Terminal & Grok Build themes."""
     try:
         from .tui import GrokBuildTUI
         tui = GrokBuildTUI(
             working_dir=working_dir,
             generator_model=generator_model,
             curator_model=curator_model,
+            theme_name=theme,
         )
         tui.run()
         return
@@ -265,6 +267,7 @@ def main():
     inter_p = subparsers.add_parser("interactive", help="Start interactive terminal coding session")
     inter_p.add_argument("--generator", "-g", type=str, default="gpt-4o-mini", help="Active draft generator model")
     inter_p.add_argument("--curator", "-c", type=str, default="deepseek-v4-flash", help="Active curator & verifier model")
+    inter_p.add_argument("--theme", "-t", type=str, default="bloomberg", choices=["bloomberg", "grok", "matrix"], help="Color theme (default: bloomberg)")
 
     # Command: mcp
     subparsers.add_parser("mcp", help="Run DSpark as a Model Context Protocol (MCP) server")
@@ -293,6 +296,7 @@ def main():
             start_interactive_session(
                 generator_model=getattr(args, "generator", "gpt-4o-mini"),
                 curator_model=getattr(args, "curator", "deepseek-v4-flash"),
+                theme=getattr(args, "theme", "bloomberg"),
             )
 
         elif args.command == "search":

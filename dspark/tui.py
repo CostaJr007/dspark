@@ -1,14 +1,12 @@
 """
 DSpark Full-Featured Terminal User Interface (TUI).
-Faithfully reproduces the Grok Build & Claude Code interactive environment:
-- Reactive prompt_toolkit session with live Tab auto-completion & history
-- Live Bottom Status Toolbar (active models, workspace, memory)
-- Animated reasoning spinners (rich.status)
-- Syntax-highlighted code panels, tables, and tool execution cards
+Faithfully reproduces the Grok Build & Claude Code interactive environment,
+with support for authentic Bloomberg Terminal Amber Theme, Grok Cyan, and Matrix Green.
 """
 
 import os
 import sys
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
 from prompt_toolkit import PromptSession
@@ -31,16 +29,62 @@ from .client import LocalLLMClient, create_model_client
 
 console = Console()
 
-PROMPT_STYLE = Style.from_dict({
-    "prompt": "#00ffcc bold",
-    "arrow": "#ffffff bold",
-    "bottom-toolbar": "bg:#1e1e2e #a6adc8",
-    "bottom-toolbar.key": "bg:#313244 #f5c2e7 bold",
-    "bottom-toolbar.val": "bg:#1e1e2e #89b4fa bold",
-    "bottom-toolbar.cur": "bg:#1e1e2e #a6e3a1 bold",
-})
+
+@dataclass
+class ColorTheme:
+    name: str
+    primary_color: str        # Hex / ANSI
+    secondary_color: str
+    accent_green: str
+    accent_yellow: str
+    accent_red: str
+    border_style: str
+    prompt_fg: str
+    toolbar_bg: str
+    toolbar_key_bg: str
+
+
+THEMES: Dict[str, ColorTheme] = {
+    "bloomberg": ColorTheme(
+        name="Bloomberg Terminal (Amber Classic)",
+        primary_color="#ff9900",       # Bloomberg Amber
+        secondary_color="#ffaa00",
+        accent_green="#00ff66",        # Ticker Green
+        accent_yellow="#ffcc00",       # Amber Gold
+        accent_red="#ff3333",          # Alert Red
+        border_style="bold #ff9900",
+        prompt_fg="#ff9900",
+        toolbar_bg="#111111",
+        toolbar_key_bg="#222222",
+    ),
+    "grok": ColorTheme(
+        name="Grok Build (Electric Cyan)",
+        primary_color="#00ffcc",
+        secondary_color="#89b4fa",
+        accent_green="#a6e3a1",
+        accent_yellow="#f9e2af",
+        accent_red="#f38ba8",
+        border_style="bright_cyan",
+        prompt_fg="#00ffcc",
+        toolbar_bg="#1e1e2e",
+        toolbar_key_bg="#313244",
+    ),
+    "matrix": ColorTheme(
+        name="Matrix Phosphor (Hacker Green)",
+        primary_color="#00ff41",
+        secondary_color="#008f11",
+        accent_green="#00ff41",
+        accent_yellow="#adff2f",
+        accent_red="#ff0033",
+        border_style="bold #00ff41",
+        prompt_fg="#00ff41",
+        toolbar_bg="#0d1117",
+        toolbar_key_bg="#161b22",
+    ),
+}
 
 SLASH_COMMANDS = [
+    "/theme",
     "/models",
     "/search",
     "/fetch",
@@ -58,7 +102,8 @@ SLASH_COMMANDS = [
 
 class GrokBuildTUI:
     """
-    Stateful interactive terminal agent loop modeled after Grok Build.
+    Interactive terminal agent loop with support for Bloomberg Terminal theme,
+    Grok Build layout, and live speculative AI verification.
     """
 
     def __init__(
@@ -66,10 +111,12 @@ class GrokBuildTUI:
         working_dir: Optional[str] = None,
         generator_model: str = "gpt-4o-mini",
         curator_model: str = "deepseek-v4-flash",
+        theme_name: str = "bloomberg",
     ):
         self.working_dir = os.path.abspath(working_dir or os.getcwd())
         self.generator_model = generator_model
         self.curator_model = curator_model
+        self.current_theme = THEMES.get(theme_name.lower(), THEMES["bloomberg"])
 
         self.agent = DSparkAgent(
             working_dir=self.working_dir,
@@ -77,54 +124,82 @@ class GrokBuildTUI:
         )
 
         self.completer = WordCompleter(SLASH_COMMANDS, sentence=True)
+        self._init_session()
+
+    def _init_session(self) -> None:
+        style = Style.from_dict({
+            "prompt": f"{self.current_theme.prompt_fg} bold",
+            "arrow": "#ffffff bold",
+            "bottom-toolbar": f"bg:{self.current_theme.toolbar_bg} #ffffff",
+            "bottom-toolbar.key": f"bg:{self.current_theme.toolbar_key_bg} {self.current_theme.primary_color} bold",
+            "bottom-toolbar.val": f"bg:{self.current_theme.toolbar_bg} {self.current_theme.accent_yellow} bold",
+            "bottom-toolbar.cur": f"bg:{self.current_theme.toolbar_bg} {self.current_theme.accent_green} bold",
+        })
         self.session = PromptSession(
             history=InMemoryHistory(),
             auto_suggest=AutoSuggestFromHistory(),
             completer=self.completer,
-            style=PROMPT_STYLE,
+            style=style,
         )
+
+    def set_theme(self, theme_key: str) -> None:
+        key = theme_key.lower().strip()
+        if key in THEMES:
+            self.current_theme = THEMES[key]
+            self._init_session()
+            console.print(f"\n[bold green]✓ Switched theme to:[/bold green] [bold {self.current_theme.primary_color}]{self.current_theme.name}[/bold {self.current_theme.primary_color}]\n")
+            self.render_header()
+        else:
+            console.print(f"[bold red]Unknown theme '{theme_key}'. Available: {', '.join(THEMES.keys())}[/bold red]")
 
     def render_header(self) -> None:
         grid = Table.grid(expand=True)
         grid.add_column(justify="left")
         grid.add_column(justify="right")
 
-        title = Text("⚡ DSPARK ", style="bold white on #1e1e2e") + Text("v0.1.0 ", style="dim") + Text("│ Dual-Engine Speculative AI & Autonomous CLI", style="cyan")
-        status_badges = Text("● DeepSeek-V4  ", style="bold green") + Text("● OpenAI  ", style="bold blue") + Text("● Kimi Search  ", style="bold magenta") + Text("● Local", style="bold yellow")
-        grid.add_row(title, status_badges)
+        brand_badge = f"[{self.current_theme.primary_color}]⚡ DSPARK[/{self.current_theme.primary_color}] [bold white]v0.1.0[/bold white] │ [dim white]Dual-Engine Speculative AI[/dim white]"
+        status_badges = f"[{self.current_theme.accent_green}]● DeepSeek-V4[/{self.current_theme.accent_green}]  [{self.current_theme.primary_color}]● OpenAI[/{self.current_theme.primary_color}]  [{self.current_theme.accent_yellow}]● Kimi WebSearch[/{self.current_theme.accent_yellow}]  [white]● Bloomberg Terminal[/white]"
+        grid.add_row(brand_badge, status_badges)
 
-        models_info = Text(f"  Generator: ", style="dim") + Text(f"{self.generator_model} ", style="bold yellow") + Text("│ Curator: ", style="dim") + Text(f"{self.curator_model} ", style="bold green") + Text("│ Workspace: ", style="dim") + Text(f"{self.working_dir}", style="white")
+        models_info = (
+            f"  [dim white]Generator:[/dim white] [{self.current_theme.accent_yellow} bold]{self.generator_model}[/{self.current_theme.accent_yellow} bold] "
+            f"│ [dim white]Curator:[/dim white] [{self.current_theme.accent_green} bold]{self.curator_model}[/{self.current_theme.accent_green} bold] "
+            f"│ [dim white]Theme:[/dim white] [{self.current_theme.primary_color}]{self.current_theme.name.split(' ')[0]}[/{self.current_theme.primary_color}] "
+            f"│ [dim white]Workspace:[/dim white] [white]{self.working_dir}[/white]"
+        )
 
         panel = Panel(
             grid,
             subtitle=models_info,
             subtitle_align="left",
-            border_style="bright_cyan",
+            border_style=self.current_theme.border_style,
             padding=(0, 1),
         )
         console.print()
         console.print(panel)
-        console.print("[dim]Type your instruction, [cyan]/models[/cyan] to switch models, [cyan]/help[/cyan] for commands, [cyan]/exit[/cyan] to quit.[/dim]\n")
+        console.print(f"[dim]Type instruction in natural language, [{self.current_theme.primary_color}]/theme[/{self.current_theme.primary_color}] for Bloomberg/Grok, [{self.current_theme.primary_color}]/models[/{self.current_theme.primary_color}] to switch models, [{self.current_theme.primary_color}]/help[/{self.current_theme.primary_color}] for commands.[/dim]\n")
 
     def get_bottom_toolbar(self) -> HTML:
         return HTML(
-            f' <b><style fg="#00ffcc">⚡ DSpark</style></b> │ '
-            f'<style fg="#cdd6f4">Gen:</style> <b><style fg="#f9e2af">{self.generator_model}</style></b> │ '
-            f'<style fg="#cdd6f4">Curator:</style> <b><style fg="#a6e3a1">{self.curator_model}</style></b> │ '
-            f'<style fg="#6c7086">Tab: Complete</style>'
+            f' <b><style fg="{self.current_theme.primary_color}">⚡ DSPARK</style></b> │ '
+            f'<style fg="#ffffff">Gen:</style> <b><style fg="{self.current_theme.accent_yellow}">{self.generator_model}</style></b> │ '
+            f'<style fg="#ffffff">Curator:</style> <b><style fg="{self.current_theme.accent_green}">{self.curator_model}</style></b> │ '
+            f'<style fg="{self.current_theme.primary_color}">[BLOOMBERG AMBER]</style> │ '
+            f'<style fg="#888888">Tab: Complete</style>'
         )
 
     def render_help(self) -> None:
         table = Table(
             title="⚡ Available Interactive Slash Commands",
-            title_style="bold cyan",
-            border_style="blue",
+            title_style=f"bold {self.current_theme.primary_color}",
+            border_style=self.current_theme.border_style,
             expand=True,
         )
-        table.add_column("Command", style="bold green", width=26)
+        table.add_column("Command", style=f"bold {self.current_theme.primary_color}", width=26)
         table.add_column("Description", style="dim white")
 
         commands = [
+            ("/theme [name]", "🎨 Switch UI theme (bloomberg, grok, matrix)"),
             ("/models", "🤖 Interactively switch active Generator & Curator models"),
             ("/search <query>", "🔍 Kimi-style deep web search for live documentation and error fixes"),
             ("/fetch <url>", "📄 Fetch URL and convert to clean Markdown documentation"),
@@ -153,11 +228,11 @@ class GrokBuildTUI:
 
         table = Table(
             title="🤖 Select Active AI Models for DSpark Engine",
-            title_style="bold yellow",
-            border_style="yellow",
+            title_style=f"bold {self.current_theme.primary_color}",
+            border_style=self.current_theme.border_style,
             expand=True,
         )
-        table.add_column("Key", style="bold cyan", width=6, justify="center")
+        table.add_column("Key", style=f"bold {self.current_theme.primary_color}", width=6, justify="center")
         table.add_column("Preset Name", style="bold white", width=32)
         table.add_column("Generator Model (Draft)", style="yellow")
         table.add_column("Curator Model (Verifier)", style="green")
@@ -203,7 +278,7 @@ class GrokBuildTUI:
             return
 
         self.agent.client = create_model_client(self.generator_model)
-        console.print(f"\n[bold green]✓ Models updated![/bold green] Active Pairing: [yellow]{self.generator_model}[/yellow] + [green]{self.curator_model}[/green]\n")
+        console.print(f"\n[bold green]✓ Models updated![/bold green] Active Pairing: [{self.current_theme.accent_yellow}]{self.generator_model}[/{self.current_theme.accent_yellow}] + [{self.current_theme.accent_green}]{self.curator_model}[/{self.current_theme.accent_green}]\n")
         self.render_header()
 
     def run(self) -> None:
@@ -212,7 +287,7 @@ class GrokBuildTUI:
         while True:
             try:
                 user_input = self.session.prompt(
-                    HTML('<b><style fg="#00ffcc">DSpark</style></b> <style fg="#ffffff">❯</style> '),
+                    HTML(f'<b><style fg="{self.current_theme.primary_color}">DSpark</style></b> <style fg="#ffffff">❯</style> '),
                     bottom_toolbar=self.get_bottom_toolbar,
                 ).strip()
 
@@ -220,7 +295,7 @@ class GrokBuildTUI:
                     continue
 
                 if user_input in ("/exit", "/quit", "exit", "quit"):
-                    console.print("[yellow]Exiting DSpark session. Happy coding![/yellow]")
+                    console.print(f"[{self.current_theme.accent_yellow}]Exiting DSpark session. Happy coding![/{self.current_theme.accent_yellow}]")
                     break
 
                 elif user_input in ("/clear", "clear"):
@@ -230,6 +305,17 @@ class GrokBuildTUI:
 
                 elif user_input in ("/help", "help"):
                     self.render_help()
+                    continue
+
+                elif user_input.startswith("/theme"):
+                    parts = user_input.split(maxsplit=1)
+                    if len(parts) > 1:
+                        self.set_theme(parts[1])
+                    else:
+                        console.print(f"\n[bold {self.current_theme.primary_color}]Available Themes:[/bold {self.current_theme.primary_color}]")
+                        for t_key, t_val in THEMES.items():
+                            console.print(f"  • [{t_val.primary_color}]{t_key}[/{t_val.primary_color}]: {t_val.name}")
+                        console.print(f"\nUsage: [dim]/theme bloomberg[/dim] or [dim]/theme grok[/dim] or [dim]/theme matrix[/dim]\n")
                     continue
 
                 elif user_input in ("/models", "models", "/model", "/select"):
@@ -246,21 +332,26 @@ class GrokBuildTUI:
                             console.print(f"  * [bold]{s['name']}[/bold] ({s['v1_url']})")
                             models = LocalLLMClient(base_url=s["v1_url"]).list_models()
                             for m in models:
-                                console.print(f"    - [cyan]{m}[/cyan]")
+                                console.print(f"    - [{self.current_theme.primary_color}]{m}[/{self.current_theme.primary_color}]")
                         console.print()
                     continue
 
                 elif user_input.startswith("/search "):
                     query = user_input[8:].strip()
-                    with console.status(f"[bold magenta]🔍 Searching web with Kimi Engine for: '{query}'...[/bold magenta]", spinner="dots"):
+                    with console.status(f"[bold {self.current_theme.primary_color}]🔍 Searching web with Kimi Engine for: '{query}'...[/bold {self.current_theme.primary_color}]", spinner="dots"):
                         results = self.agent.search_engine.search(query, max_results=5)
 
-                    table = Table(title=f"🔍 Web Search Results: '{query}'", title_style="bold magenta", border_style="magenta", expand=True)
+                    table = Table(
+                        title=f"🔍 Web Search Results: '{query}'",
+                        title_style=f"bold {self.current_theme.primary_color}",
+                        border_style=self.current_theme.border_style,
+                        expand=True,
+                    )
                     table.add_column("#", width=3, justify="right")
                     table.add_column("Result / URL / Snippet")
 
                     for i, r in enumerate(results, 1):
-                        txt = Text(f"{r.title}\n", style="bold white") + Text(f"{r.url}\n", style="dim underline") + Text(f"{r.snippet[:140]}...", style="dim")
+                        txt = Text(f"{r.title}\n", style="bold white") + Text(f"{r.url}\n", style=f"dim {self.current_theme.primary_color} underline") + Text(f"{r.snippet[:140]}...", style="dim")
                         table.add_row(str(i), txt)
 
                     console.print()
@@ -270,16 +361,16 @@ class GrokBuildTUI:
 
                 elif user_input.startswith("/fetch "):
                     url = user_input[7:].strip()
-                    with console.status(f"[bold cyan]📄 Fetching & parsing Markdown from: '{url}'...[/bold cyan]", spinner="dots"):
+                    with console.status(f"[bold {self.current_theme.primary_color}]📄 Fetching & parsing Markdown from: '{url}'...[/bold {self.current_theme.primary_color}]", spinner="dots"):
                         content = self.agent.fetch_url(url)
-                    console.print(Panel(Markdown(content[:3000]), title=f"📄 Page Content: {url}", border_style="cyan"))
+                    console.print(Panel(Markdown(content[:3000]), title=f"📄 Page Content: {url}", border_style=self.current_theme.border_style))
                     continue
 
                 elif user_input.startswith("/files"):
                     parts = user_input.split(maxsplit=1)
                     subpath = parts[1] if len(parts) > 1 else "."
                     files = self.agent.list_files(subpath)
-                    console.print(f"\n[bold cyan]Files in {subpath} ({len(files)} items):[/bold cyan]")
+                    console.print(f"\n[bold {self.current_theme.primary_color}]Files in {subpath} ({len(files)} items):[/bold {self.current_theme.primary_color}]")
                     for f in files:
                         console.print(f"  [dim]•[/dim] {f}")
                     console.print()
@@ -290,28 +381,28 @@ class GrokBuildTUI:
                     try:
                         content = self.agent.read_file(fpath)
                         syntax = Syntax(content, "python" if fpath.endswith(".py") else "text", line_numbers=True)
-                        console.print(Panel(syntax, title=f"📖 {fpath}", border_style="blue"))
+                        console.print(Panel(syntax, title=f"📖 {fpath}", border_style=self.current_theme.border_style))
                     except Exception as e:
                         console.print(f"[bold red]Error: {e}[/bold red]")
                     continue
 
                 elif user_input.startswith("/sh "):
                     cmd = user_input[4:].strip()
-                    with console.status(f"[bold yellow]⚡ Running command: '{cmd}'...[/bold yellow]", spinner="line"):
+                    with console.status(f"[bold {self.current_theme.accent_yellow}]⚡ Running command: '{cmd}'...[/bold {self.current_theme.accent_yellow}]", spinner="line"):
                         res = self.agent.run_terminal(cmd)
-                    console.print(Panel(res, title=f"⚡ Output: {cmd}", border_style="yellow"))
+                    console.print(Panel(res, title=f"⚡ Output: {cmd}", border_style=self.current_theme.border_style))
                     continue
 
-                # Standard Natural Language Task -> Execute with Grok-Build live spinner
-                with console.status(f"[bold cyan]⚡ Executing Metacognitive Reasoning Engine ({self.generator_model} + {self.curator_model})...[/bold cyan]", spinner="arc"):
+                # Standard Natural Language Task -> Execute with live spinner
+                with console.status(f"[bold {self.current_theme.primary_color}]⚡ Executing Metacognitive Reasoning Engine ({self.generator_model} + {self.curator_model})...[/bold {self.current_theme.primary_color}]", spinner="arc"):
                     response = self.agent.execute_task(user_input)
 
                 console.print()
-                console.print(Panel(Markdown(response), title="⚡ DSpark Solution", border_style="bright_cyan", padding=(1, 2)))
+                console.print(Panel(Markdown(response), title=f"[{self.current_theme.primary_color}]⚡ DSpark Solution[/{self.current_theme.primary_color}]", border_style=self.current_theme.border_style, padding=(1, 2)))
                 console.print()
 
             except KeyboardInterrupt:
-                console.print("\n[yellow]Interrupted. Type /exit to quit.[/yellow]")
+                console.print(f"\n[{self.current_theme.accent_yellow}]Interrupted. Type /exit to quit.[/{self.current_theme.accent_yellow}]")
             except EOFError:
                 break
             except Exception as e:
