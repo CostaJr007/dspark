@@ -51,9 +51,16 @@ flowchart TD
 
 ### 1. Installation
 
+#### Option A: High-Performance Rust Binary (Recommended)
 ```bash
 git clone https://github.com/CostaJr007/dspark.git
 cd dspark
+cargo install --path .
+```
+*(Produces a standalone native `dspark` binary with < 3ms startup time and ~8MB RAM usage)*
+
+#### Option B: Python Edition
+```bash
 pip install -e .
 ```
 

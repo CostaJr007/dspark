@@ -49,9 +49,16 @@ flowchart TD
 
 ## 🚀 Como Instalar e Usar
 
+### Opção A: Binário Nativo em Rust (Alta Performance - Recomendado)
 ```bash
 git clone https://github.com/CostaJr007/dspark.git
 cd dspark
+cargo install --path .
+```
+*(Gera o executável nativo `dspark` com inicialização em < 3ms e consumo de apenas ~8MB de RAM)*
+
+### Opção B: Edição Python
+```bash
 pip install -e .
 ```
 
