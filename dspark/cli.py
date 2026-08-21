@@ -21,13 +21,12 @@ if hasattr(sys.stdout, "reconfigure"):
         pass
 
 from .agent import DSparkAgent
-from .client import DeepSeekClient
+from .benchmark import DSparkBenchmarkRunner
+from .client import DeepSeekClient, create_model_client, LocalLLMClient
 from .curator import DeepSeekCurator
 from .mcp_server import run_mcp_server
 from .pipeline import DSparkPipeline
 from .search import WebSearchEngine
-
-
 from .ui import (
     Theme,
     render_grok_banner,
@@ -38,7 +37,6 @@ from .ui import (
     render_search_results,
     render_audit_panel,
 )
-from .client import create_model_client, LocalLLMClient
 
 
 def _read_file_or_string(val: str) -> str:
@@ -127,7 +125,6 @@ def start_interactive_session(
                 continue
 
             elif user_input in ("/local", "local"):
-                from .client import LocalLLMClient
                 active = LocalLLMClient.detect_active_endpoints()
                 if not active:
                     print(f"\n{Theme.YELLOW}[!] No active local LLM detected. Start Ollama (ollama run qwen2.5-coder:1.5b) or LM Studio.{Theme.RESET}\n")
@@ -389,7 +386,6 @@ def main():
                 print(res.final_code)
 
         elif args.command == "bench":
-            from .benchmark import DSparkBenchmarkRunner
             runner = DSparkBenchmarkRunner(
                 generator_model=args.generator,
                 curator_model=args.curator,
@@ -432,7 +428,6 @@ def main():
                 print()
 
         elif args.command == "local":
-            from .client import LocalLLMClient
             print("\n\033[1;36m=== 💻 DSPARK LOCAL & OFFLINE LLM SCANNER ===\033[0m\n")
             active = LocalLLMClient.detect_active_endpoints()
 

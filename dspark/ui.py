@@ -8,6 +8,13 @@ import shutil
 import sys
 from typing import Any, Dict, List, Optional
 
+# Ensure UTF-8 output encoding on Windows consoles
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 
 # ANSI Color & Style Palette
 class Theme:
