@@ -63,8 +63,29 @@ export DEEPSEEK_API_KEY="sua-chave-deepseek"
 
 ---
 
-## 💻 Exemplos de CLI
+## 💻 Exemplos de Uso do CLI
 
+### Modo Interativo (Estilo Grok-Build + Kimi Code)
+Abra a sessão interativa diretamente no seu terminal:
+```bash
+dspark
+```
+
+Dentro da sessão interativa, use os *slash commands*:
+* `/search <busca>` - Pesquisa profunda na web por documentações e correções de erros (estilo Kimi).
+* `/fetch <url>` - Raspa página web e converte para Markdown limpo.
+* `/files [pasta]` - Lista arquivos e estrutura do projeto.
+* `/read <arquivo>` - Lê e exibe código local.
+* `/sh <comando>` - Executa comando de terminal (`pytest`, `npm test`, etc.).
+* `/audit <arquivo> -s <spec>` - Audita contratos e invariantes com DeepSeek.
+* `/refine <arquivo> -s <spec>` - Refina o código no próprio arquivo.
+
+### Pesquisa Web Direta
+```bash
+dspark search "FastAPI background tasks best practices"
+```
+
+### Auditoria e Refinamento
 ```bash
 # Auditar código com DeepSeek
 dspark audit src/busca.py --spec "Busca binária O(log N) tratando listas vazias"
@@ -74,6 +95,11 @@ dspark refine src/algoritmo.py --spec "Otimizar para O(1) de memória auxiliar" 
 
 # Arbitrar entre dois códigos candidatos
 dspark arbitrate candidato_a.py candidato_b.py --spec "Fila concorrente sem lock"
+```
+
+### Execução de Tarefa One-Shot
+```bash
+dspark "Refatore o arquivo auth.py para usar bcrypt e valide todos os edge cases"
 ```
 
 ---

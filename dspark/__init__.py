@@ -11,6 +11,7 @@ from .curator import DeepSeekCurator, CurationVerdict, AuditResult, RefineResult
 from .generator import GeminiGenerator
 from .pipeline import DSparkPipeline
 from .agent import DSparkAgent
+from .search import WebSearchEngine, HTMLToMarkdownParser, SearchResult
 from .prompts import (
     CURATOR_SYSTEM_PROMPT,
     ARBITRATOR_SYSTEM_PROMPT,
@@ -25,6 +26,9 @@ __all__ = [
     "GeminiGenerator",
     "DSparkPipeline",
     "DSparkAgent",
+    "WebSearchEngine",
+    "HTMLToMarkdownParser",
+    "SearchResult",
     "CurationVerdict",
     "AuditResult",
     "RefineResult",

@@ -77,6 +77,25 @@ export GEMINI_API_KEY="your-gemini-key"
 ### Audit Code Against Specification
 ```bash
 dspark audit src/search.py --spec "Binary search with O(log N) complexity and empty list handling"
+### Interactive Terminal Agent (Grok-Build + Kimi Style)
+Launch the interactive coding REPL directly in your workspace:
+```bash
+dspark
+```
+
+Inside the interactive session, use slash commands:
+* `/search <query>` - Run deep web research for docs, API specs, and error fixes (Kimi style).
+* `/fetch <url>` - Scrape and convert documentation page to clean Markdown.
+* `/files [path]` - Inspect workspace directory structure.
+* `/read <file>` - View local code file.
+* `/sh <command>` - Execute local shell commands (e.g. `pytest`, `npm test`, `git status`).
+* `/audit <file> -s <spec>` - Audit code contracts with DeepSeek Reasoner.
+* `/refine <file> -s <spec>` - Synthesize zero-bug code in-place.
+
+### Deep Web Search (Kimi Code Engine)
+Search the web for up-to-date documentation or library APIs:
+```bash
+dspark search "FastAPI background tasks best practices"
 ```
 
 ### Auto-Refine Code In-Place
@@ -89,9 +108,9 @@ dspark refine src/algorithm.py --spec "Optimize for O(1) auxiliary space" --in-p
 dspark arbitrate candidate_a.py candidate_b.py --spec "Lock-free queue specification"
 ```
 
-### End-to-End Dual Pipeline
+### One-Shot Goal Execution
 ```bash
-dspark run "Create an LRU Cache with O(1) get and put operations" --lang python --out lru_cache.py
+dspark "Refactor auth.py to use bcrypt and verify all edge cases"
 ```
 
 ---
