@@ -1,6 +1,6 @@
 # DSpark Metacognitive Engineering Protocol
 
-This protocol is natively enforced across the **DSpark** framework, CLI, and Antigravity agents.
+This protocol is natively enforced across the **DSpark** framework and CLI.
 
 When requesting modifications, refactors, feature additions, or bug fixes, all DSpark agents follow this deterministic process:
 

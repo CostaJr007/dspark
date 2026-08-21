@@ -1,7 +1,5 @@
 """
-DSpark Full-Featured Terminal User Interface (TUI).
-Faithfully reproduces the Grok Build & Claude Code interactive environment,
-with support for authentic Bloomberg Terminal Amber Theme, Grok Cyan, and Matrix Green.
+DSpark interactive terminal UI (bloomberg / cyan / matrix palettes).
 """
 
 import os
@@ -57,8 +55,8 @@ THEMES: Dict[str, ColorTheme] = {
         toolbar_bg="#111111",
         toolbar_key_bg="#222222",
     ),
-    "grok": ColorTheme(
-        name="Grok Build (Electric Cyan)",
+    "cyan": ColorTheme(
+        name="DSpark Cyan",
         primary_color="#00ffcc",
         secondary_color="#89b4fa",
         accent_green="#a6e3a1",
@@ -100,10 +98,9 @@ SLASH_COMMANDS = [
 ]
 
 
-class GrokBuildTUI:
+class SparkTUI:
     """
-    Interactive terminal agent loop with support for Bloomberg Terminal theme,
-    Grok Build layout, and live speculative AI verification.
+    Interactive terminal agent loop with dual-engine verification.
     """
 
     def __init__(
@@ -158,7 +155,7 @@ class GrokBuildTUI:
             Text("  ", style="default")
             + Text("● DeepSeek-V4  ", style=f"bold {self.current_theme.accent_green}")
             + Text("● OpenAI  ", style=f"bold {self.current_theme.primary_color}")
-            + Text("● Kimi Search  ", style=f"bold {self.current_theme.accent_yellow}")
+            + Text("● Web Search  ", style=f"bold {self.current_theme.accent_yellow}")
             + Text("● Local Engine", style="bold white")
         )
         models_line = (
@@ -202,9 +199,9 @@ class GrokBuildTUI:
         table.add_column("Description", style="dim white")
 
         commands = [
-            ("/theme [name]", "🎨 Switch UI theme (bloomberg, grok, matrix)"),
+            ("/theme [name]", "🎨 Switch UI theme (bloomberg, cyan, matrix)"),
             ("/models", "🤖 Interactively switch active Generator & Curator models"),
-            ("/search <query>", "🔍 Kimi-style deep web search for live documentation and error fixes"),
+            ("/search <query>", "🔍 Live web search for documentation and error fixes"),
             ("/fetch <url>", "📄 Fetch URL and convert to clean Markdown documentation"),
             ("/audit <file> -s <spec>", "⚖️  Formal reasoning audit against I/O contracts & edge cases"),
             ("/refine <file> -s <spec>", "🛠️  Surgical code refinement guided by counter-examples"),
@@ -327,7 +324,7 @@ class GrokBuildTUI:
                         console.print(f"\n[bold {self.current_theme.primary_color}]Available Themes:[/bold {self.current_theme.primary_color}]")
                         for t_key, t_val in THEMES.items():
                             console.print(f"  • [{t_val.primary_color}]{t_key}[/{t_val.primary_color}]: {t_val.name}")
-                        console.print(f"\nUsage: [dim]/theme bloomberg[/dim] or [dim]/theme grok[/dim] or [dim]/theme matrix[/dim]\n")
+                        console.print(f"\nUsage: [dim]/theme bloomberg[/dim] or [dim]/theme cyan[/dim] or [dim]/theme matrix[/dim]\n")
                     continue
 
                 elif user_input in ("/models", "models", "/model", "/select"):
@@ -350,7 +347,7 @@ class GrokBuildTUI:
 
                 elif user_input.startswith("/search "):
                     query = user_input[8:].strip()
-                    with console.status(f"[bold {self.current_theme.primary_color}]🔍 Searching web with Kimi Engine for: '{query}'...[/bold {self.current_theme.primary_color}]", spinner="dots"):
+                    with console.status(f"[bold {self.current_theme.primary_color}]🔍 Searching web for: '{query}'...[/bold {self.current_theme.primary_color}]", spinner="dots"):
                         results = self.agent.search_engine.search(query, max_results=5)
 
                     table = Table(
@@ -405,9 +402,8 @@ class GrokBuildTUI:
                     console.print(Panel(res, title=f"⚡ Output: {cmd}", border_style=self.current_theme.border_style))
                     continue
 
-                # Standard Natural Language Task -> Execute with GrokAgent tool loop
-                from .grok_agent import GrokAgent
-                grok = GrokAgent(
+                from .spark_agent import SparkAgent
+                spark = SparkAgent(
                     working_dir=self.working_dir,
                     generator_model=self.generator_model,
                     curator_model=self.curator_model,
@@ -423,8 +419,8 @@ class GrokBuildTUI:
                     snippet = res.output[:180].replace("\n", " ") if res.output else (res.error or "")
                     console.print(f"    [{status_style}]{status_text}[/{status_style}] [dim]{snippet}...[/dim]")
 
-                with console.status(f"[bold {self.current_theme.primary_color}]⚡ Grok Build Engine ({self.generator_model} + {self.curator_model})...[/bold {self.current_theme.primary_color}]", spinner="arc"):
-                    response = grok.execute_step(
+                with console.status(f"[bold {self.current_theme.primary_color}]⚡ DSpark ({self.generator_model} + {self.curator_model})...[/bold {self.current_theme.primary_color}]", spinner="arc"):
+                    response = spark.execute_step(
                         user_prompt=user_input,
                         on_tool_call=_on_tool_call,
                         on_tool_result=_on_tool_result,

@@ -1,11 +1,11 @@
-//! DSpark: Dual-LLM speculative engine and autonomous agent, implemented in Rust.
+//! DSpark: dual-engine creator/curator CLI and library, implemented in Rust.
 
 pub mod agent;
+pub mod agent_loop;
 pub mod benchmark;
 pub mod client;
 pub mod curator;
 pub mod generator;
-pub mod grok_agent;
 pub mod mcp;
 pub mod pair;
 pub mod pipeline;

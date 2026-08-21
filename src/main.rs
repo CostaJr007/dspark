@@ -41,7 +41,7 @@ enum Commands {
         #[arg(short, long, default_value = "bloomberg")]
         theme: String,
     },
-    /// Perform deep web search for docs or error fixes (Kimi style)
+    /// Live web search for docs or error fixes
     Search {
         query: String,
         #[arg(short = 'n', long = "sources", default_value_t = 5)]

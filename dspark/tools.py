@@ -1,5 +1,5 @@
 """
-DSpark Agentic Tool Definitions & Execution Engine (Grok Build Compatible).
+DSpark agentic tool registry (file, shell, search, curator).
 """
 
 import json
@@ -22,7 +22,7 @@ class ToolResult:
 
 class ToolRegistry:
     """
-    Registry of system and coding tools executable by the DSpark / Grok-Build Agent.
+    Registry of system and coding tools executable by the DSpark agent.
     """
 
     def __init__(self, working_dir: str, curator: Optional[DeepSeekCurator] = None):

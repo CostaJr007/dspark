@@ -2,7 +2,7 @@
 
 use crate::client::{ClientError, ModelClient};
 use crate::curator::DeepSeekCurator;
-use crate::prompts::GROK_BUILD_SYSTEM_PROMPT;
+use crate::prompts::AGENT_SYSTEM_PROMPT;
 use crate::tools::{ToolRegistry, ToolResult};
 use regex::Regex;
 use serde_json::Value;
@@ -11,13 +11,13 @@ use std::sync::OnceLock;
 
 static TOOL_JSON_RE: OnceLock<Regex> = OnceLock::new();
 
-pub struct GrokAgent {
+pub struct SparkAgent {
     pub working_dir: PathBuf,
     client: ModelClient,
     tools: ToolRegistry,
 }
 
-impl GrokAgent {
+impl SparkAgent {
     pub fn new(
         working_dir: PathBuf,
         generator_model: &str,
@@ -45,7 +45,7 @@ impl GrokAgent {
         for _ in 0..max_iterations {
             let response = self
                 .client
-                .complete(&history, Some(GROK_BUILD_SYSTEM_PROMPT), 0.2, false)
+                .complete(&history, Some(AGENT_SYSTEM_PROMPT), 0.2, false)
                 .await?;
             last = response.clone();
 

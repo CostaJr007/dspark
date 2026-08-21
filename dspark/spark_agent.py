@@ -1,6 +1,5 @@
 """
-DSpark / Grok Build Autonomous Agentic Execution Engine.
-Fuses Grok Build's full Agentic Tool Execution Loop with DSpark's Speculative Dual-Engine Verification.
+DSpark autonomous agentic execution loop with dual-engine verification.
 """
 
 import json
@@ -9,11 +8,10 @@ from typing import Any, Callable, Dict, List, Optional
 
 from .client import create_model_client
 from .curator import DeepSeekCurator
-from .prompts import METACOGNITIVE_ENGINEERING_PROMPT
 from .tools import ToolRegistry, ToolResult
 
 
-GROK_BUILD_SYSTEM_PROMPT = """You are DSpark (Grok-Build Enhanced Agent), an autonomous software engineering agent with deep reasoning and tool execution capabilities.
+AGENT_SYSTEM_PROMPT = """You are DSpark, an autonomous software engineering agent with dual-engine creator/curator verification.
 
 You have access to a local development environment and the following tools:
 1. `read_file(path, start_line, end_line)`: Read source code files.
@@ -22,7 +20,7 @@ You have access to a local development environment and the following tools:
 4. `list_files(relative_path)`: Explore workspace directory tree.
 5. `run_terminal(command)`: Run local shell commands (e.g. pytest, git, python).
 6. `search_web(query)`: Deep web search for APIs, docs, and error solutions.
-7. `verify_with_curator(code, specification)`: Submit code to DeepSeek Reasoning Curator for formal I/O audit.
+7. `verify_with_curator(code, specification)`: Submit code to the curator for formal I/O audit.
 
 When addressing user requests:
 1. Always follow the 3-step Metacognitive Protocol:
@@ -40,17 +38,17 @@ If no tool is required, directly provide your clear, expert answer in GitHub-sty
 """
 
 
-class GrokAgent:
+class SparkAgent:
     """
     Autonomous multi-turn agent that executes tools, plans tasks,
-    and runs the DSpark Dual-Engine verification loop.
+    and runs the DSpark dual-engine verification loop.
     """
 
     def __init__(
         self,
         working_dir: str,
-        generator_model: str = "gpt-4o-mini",
-        curator_model: str = "deepseek-v4-flash",
+        generator_model: str = "gemini-3.7-flash",
+        curator_model: str = "deepseek-v4-pro",
     ):
         self.working_dir = working_dir
         self.generator_model = generator_model
@@ -72,12 +70,13 @@ class GrokAgent:
         Runs the multi-turn agentic loop until completion or max_iterations reached.
         """
         messages = [
-            {"role": "system", "content": GROK_BUILD_SYSTEM_PROMPT},
+            {"role": "system", "content": AGENT_SYSTEM_PROMPT},
             {"role": "user", "content": f"Workspace: {self.working_dir}\n\nRequest: {user_prompt}"},
         ]
 
         current_iteration = 0
         final_answer = ""
+        response_text = ""
 
         while current_iteration < max_iterations:
             current_iteration += 1
@@ -91,7 +90,6 @@ class GrokAgent:
                 choices = resp.get("choices", [])
                 response_text = choices[0]["message"]["content"] if choices else ""
 
-            # Check if model requested a tool call via JSON block
             tool_match = re.search(r"```json\s*(\{.*?\})\s*```", response_text, re.DOTALL)
             if not tool_match:
                 final_answer = response_text
@@ -105,7 +103,6 @@ class GrokAgent:
                 if on_tool_call:
                     on_tool_call(tool_name, args)
 
-                # Execute tool
                 if tool_name == "read_file":
                     res = self.tools.read_file(**args)
                 elif tool_name == "write_file":
@@ -126,7 +123,6 @@ class GrokAgent:
                 if on_tool_result:
                     on_tool_result(res)
 
-                # Append tool interaction to context
                 messages.append({"role": "assistant", "content": response_text})
                 messages.append({
                     "role": "user",

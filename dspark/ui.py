@@ -1,7 +1,5 @@
 """
-DSpark UI Theme & TUI Renderer.
-Recreates the sleek, modern aesthetic of Grok Build & Claude Code:
-Rounded box panels, neon status badges, formatted tables, and syntax highlighting.
+DSpark UI theme and terminal renderer.
 """
 
 import shutil
@@ -48,7 +46,7 @@ def get_width(max_width: int = 86) -> int:
     return min(cols - 2, max_width)
 
 
-def render_grok_banner(workspace: str, generator_model: str = "gpt-4o-mini", curator_model: str = "deepseek-v4-flash") -> None:
+def render_banner(workspace: str, generator_model: str = "gemini-3.7-flash", curator_model: str = "deepseek-v4-pro") -> None:
     w = get_width()
     inner = w - 4
 
@@ -60,7 +58,7 @@ def render_grok_banner(workspace: str, generator_model: str = "gpt-4o-mini", cur
     # Active Pairing Pills
     pill_gen = f"{Theme.GRAY}Generator:{Theme.RESET} {Theme.BOLD}{Theme.YELLOW}{generator_model}{Theme.RESET}"
     pill_cur = f"{Theme.GRAY}Curator:{Theme.RESET} {Theme.BOLD}{Theme.GREEN}{curator_model}{Theme.RESET}"
-    pill_kimi = f"{Theme.MAGENTA}●{Theme.RESET} Kimi WebSearch"
+    pill_search = f"{Theme.MAGENTA}●{Theme.RESET} Web Search"
 
     print()
     print(top)
@@ -72,7 +70,7 @@ def render_grok_banner(workspace: str, generator_model: str = "gpt-4o-mini", cur
     print(mid)
     
     # Active Models line
-    models_line = f" {pill_gen}  │  {pill_cur}  │  {pill_kimi}"
+    models_line = f" {pill_gen}  │  {pill_cur}  │  {pill_search}"
     print(f"{bar} {models_line:<{inner + 26}} {bar}")
 
     # Workspace line
@@ -134,7 +132,7 @@ def render_help_panel() -> None:
 
     commands = [
         ("/models", "🤖 Interactively switch active Generator & Curator models"),
-        ("/search <query>", "🔍 Deep Web Search for docs, APIs and errors (Kimi style)"),
+        ("/search <query>", "🔍 Live web search for docs, APIs and errors"),
         ("/fetch <url>", "📄 Fetch URL and convert to clean Markdown documentation"),
         ("/audit <file> -s <spec>", "⚖️  Audit code against strict I/O contracts & edge cases"),
         ("/refine <file> -s <spec>", "🛠️  Refine code in-place guided by counter-examples"),

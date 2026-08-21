@@ -1,5 +1,5 @@
 """
-Kimi-style Web Search and Deep URL Document Reader for DSpark.
+Live web search and URL document reader for DSpark.
 Zero-dependency implementation using standard library urllib and HTML parsing.
 """
 
@@ -55,8 +55,7 @@ class HTMLToMarkdownParser:
 
 class WebSearchEngine:
     """
-    Search engine aggregator that queries the web and parses documentation
-    (Inspired by Kimi Code CLI's WebSearch & FetchURL tools).
+    Search engine aggregator that queries the web and fetches documentation.
     """
 
     USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 DSpark/0.1.0"

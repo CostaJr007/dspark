@@ -1,6 +1,5 @@
 """
-Command Line Interface & Interactive Terminal Agent for DSpark.
-Fuses Grok Build's interactive TUI & autonomous loop with Kimi Code's Web Research Engine.
+Command-line interface and interactive terminal agent for DSpark.
 """
 
 import argparse
@@ -29,7 +28,7 @@ from .pipeline import DSparkPipeline
 from .search import WebSearchEngine
 from .ui import (
     Theme,
-    render_grok_banner,
+    render_banner,
     render_prompt_box,
     render_prompt_bottom,
     render_help_panel,
@@ -53,10 +52,10 @@ def start_interactive_session(
     curator_model: str = "deepseek-v4-flash",
     theme: str = "bloomberg",
 ):
-    """Interactive Terminal User Interface (TUI) with Bloomberg Terminal & Grok Build themes."""
+    """Interactive terminal UI (bloomberg, cyan, matrix palettes)."""
     try:
-        from .tui import GrokBuildTUI
-        tui = GrokBuildTUI(
+        from .tui import SparkTUI
+        tui = SparkTUI(
             working_dir=working_dir,
             generator_model=generator_model,
             curator_model=curator_model,
@@ -74,7 +73,7 @@ def start_interactive_session(
         working_dir=working_dir,
         client=create_model_client(current_gen),
     )
-    render_grok_banner(str(agent.working_dir), generator_model=current_gen, curator_model=current_cur)
+    render_banner(str(agent.working_dir), generator_model=current_gen, curator_model=current_cur)
 
     while True:
         try:
@@ -91,7 +90,7 @@ def start_interactive_session(
 
             elif user_input in ("/clear", "clear"):
                 os.system("cls" if os.name == "nt" else "clear")
-                render_grok_banner(str(agent.working_dir), generator_model=current_gen, curator_model=current_cur)
+                render_banner(str(agent.working_dir), generator_model=current_gen, curator_model=current_cur)
                 continue
 
             elif user_input in ("/help", "help"):
@@ -135,7 +134,7 @@ def start_interactive_session(
 
                 agent.client = create_model_client(current_gen)
                 print(f"\n  {Theme.GREEN}✓ Models updated! Active Pairing: {Theme.YELLOW}{current_gen}{Theme.RESET} + {Theme.GREEN}{current_cur}{Theme.RESET}\n")
-                render_grok_banner(str(agent.working_dir), generator_model=current_gen, curator_model=current_cur)
+                render_banner(str(agent.working_dir), generator_model=current_gen, curator_model=current_cur)
                 continue
 
             elif user_input in ("/local", "local"):
@@ -212,7 +211,7 @@ def main():
     )
     subparsers = parser.add_subparsers(dest="command", help="Available subcommands")
 
-    # Command: search (Kimi style)
+    # Command: search
     search_p = subparsers.add_parser("search", help="Perform deep web search for docs or error fixes")
     search_p.add_argument("query", type=str, help="Search query string")
     search_p.add_argument("--sources", "-n", type=int, default=5, help="Number of search results")
@@ -267,7 +266,7 @@ def main():
     inter_p = subparsers.add_parser("interactive", help="Start interactive terminal coding session")
     inter_p.add_argument("--generator", "-g", type=str, default="gpt-4o-mini", help="Active draft generator model")
     inter_p.add_argument("--curator", "-c", type=str, default="deepseek-v4-flash", help="Active curator & verifier model")
-    inter_p.add_argument("--theme", "-t", type=str, default="bloomberg", choices=["bloomberg", "grok", "matrix"], help="Color theme (default: bloomberg)")
+    inter_p.add_argument("--theme", "-t", type=str, default="bloomberg", choices=["bloomberg", "cyan", "matrix"], help="Color theme (default: bloomberg)")
 
     # Command: mcp
     subparsers.add_parser("mcp", help="Run DSpark as a Model Context Protocol (MCP) server")

@@ -1,8 +1,9 @@
-//! Interactive terminal REPL (Grok Build & Bloomberg Terminal style).
+//! Interactive terminal REPL (bloomberg / cyan / matrix palettes).
 
 use crate::agent::DSparkAgent;
+use crate::agent_loop::SparkAgent;
 use crate::client::LocalLLMClient;
-use crate::grok_agent::GrokAgent;
+use crate::pair::{DEFAULT_CREATOR, DEFAULT_CURATOR};
 use crate::util::read_file_or_string;
 use colored::*;
 use std::io::{self, Write};
@@ -11,7 +12,7 @@ use std::path::Path;
 #[derive(Clone, Copy)]
 pub enum ThemeMode {
     Bloomberg,
-    Grok,
+    Cyan,
     Matrix,
 }
 
@@ -19,7 +20,7 @@ impl ThemeMode {
     fn from_name(name: &str) -> Option<Self> {
         match name.trim().to_lowercase().as_str() {
             "bloomberg" => Some(Self::Bloomberg),
-            "grok" => Some(Self::Grok),
+            "cyan" | "spark" => Some(Self::Cyan),
             "matrix" => Some(Self::Matrix),
             _ => None,
         }
@@ -28,7 +29,7 @@ impl ThemeMode {
     fn name(self) -> &'static str {
         match self {
             Self::Bloomberg => "Bloomberg",
-            Self::Grok => "Grok",
+            Self::Cyan => "Cyan",
             Self::Matrix => "Matrix",
         }
     }
@@ -52,14 +53,14 @@ impl ReplState {
 
 impl Default for ReplState {
     fn default() -> Self {
-        Self::new("gpt-4o-mini", "deepseek-v4-flash", "bloomberg")
+        Self::new(DEFAULT_CREATOR, DEFAULT_CURATOR, "bloomberg")
     }
 }
 
 fn paint<'a>(theme: ThemeMode, s: &'a str) -> ColoredString {
     match theme {
         ThemeMode::Bloomberg => s.yellow().bold(),
-        ThemeMode::Grok => s.cyan().bold(),
+        ThemeMode::Cyan => s.cyan().bold(),
         ThemeMode::Matrix => s.green().bold(),
     }
 }
@@ -83,7 +84,7 @@ pub fn render_rust_banner(workspace: &Path, state: &ReplState) {
         "│   {}  {}  {}  {}                       │",
         "● DeepSeek-V4".green().bold(),
         "● OpenAI".cyan().bold(),
-        "● Kimi Search".magenta().bold(),
+        "● Web Search".magenta().bold(),
         "● Native Rust".yellow().bold()
     );
     println!(
@@ -108,11 +109,11 @@ fn print_help(theme: ThemeMode) {
     );
     println!("  {}     - Interactively switch active AI models", "/models".green().bold());
     println!(
-        "  {}     - Switch color theme (bloomberg, grok, matrix)",
+        "  {}     - Switch color theme (bloomberg, cyan, matrix)",
         "/theme [name]".green().bold()
     );
     println!(
-        "  {}     - Deep web search for documentation (Kimi style)",
+        "  {}     - Live web search for documentation",
         "/search <query>".green().bold()
     );
     println!(
@@ -302,12 +303,12 @@ pub async fn start_repl(
         if let Some(theme_name) = line.strip_prefix("/theme") {
             let theme_name = theme_name.trim();
             if theme_name.is_empty() {
-                println!("Available themes: bloomberg, grok, matrix");
+                println!("Available themes: bloomberg, cyan, matrix");
                 continue;
             }
             match ThemeMode::from_name(theme_name) {
                 Some(t) => state.theme = t,
-                None => println!("{}", "Unknown theme. Options: bloomberg, grok, matrix".red()),
+                None => println!("{}", "Unknown theme. Options: bloomberg, cyan, matrix".red()),
             }
             render_rust_banner(&agent.working_dir, &state);
             continue;
@@ -426,12 +427,12 @@ pub async fn start_repl(
             "{}",
             paint(state.theme, "\n⚡ Executing Metacognitive Reasoning Engine...")
         );
-        match GrokAgent::new(
+        match SparkAgent::new(
             agent.working_dir.clone(),
             &state.generator_model,
             &state.curator_model,
         ) {
-            Ok(grok) => {
+            Ok(spark) => {
                 let on_call = |tool: &str, args: &serde_json::Value| {
                     println!("  {} {}({})", "➜ Tool Call:".cyan(), tool.bold(), args);
                 };
@@ -447,7 +448,7 @@ pub async fn start_repl(
                         );
                     }
                 };
-                match grok
+                match spark
                     .execute_step(line, Some(&on_call), Some(&on_res), 6)
                     .await
                 {

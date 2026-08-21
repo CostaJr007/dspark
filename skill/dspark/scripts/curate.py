@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Lightweight helper script for AGY agents to audit or refine a specific file.
+Helper script to audit or refine a file with DSpark.
 
-Prefers the native `dspark` Rust binary; falls back to the optional Python SDK.
+Prefers the native `dspark-cli` binary; falls back to the optional Python SDK.
 """
 
 import argparse
@@ -18,10 +18,10 @@ if project_root not in sys.path:
 
 
 def run_rust_cli(args) -> bool:
-    binary = shutil.which("dspark")
+    binary = shutil.which("dspark-cli")
     if not binary:
-        release = os.path.join(project_root, "target", "release", "dspark")
-        debug = os.path.join(project_root, "target", "debug", "dspark")
+        release = os.path.join(project_root, "target", "release", "dspark-cli")
+        debug = os.path.join(project_root, "target", "debug", "dspark-cli")
         for candidate in (release, release + ".exe", debug, debug + ".exe"):
             if os.path.isfile(candidate):
                 binary = candidate
@@ -37,7 +37,7 @@ def run_rust_cli(args) -> bool:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Quick DeepSeek curation for AGY")
+    parser = argparse.ArgumentParser(description="Quick DSpark curator audit or refine")
     parser.add_argument("file", help="File to audit or refine")
     parser.add_argument("--spec", required=True, help="Requirements or specification")
     parser.add_argument("--refine", action="store_true", help="Apply refinement in place")

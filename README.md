@@ -1,65 +1,37 @@
 # DSpark CLI
 
-Standalone dual-engine CLI (`dspark-cli`). This is **not** Grok Build and does not replace the `grok` app on your machine.
+Native Rust CLI for **dual-engine** code work: a **creator** drafts, a **curator** from a different model family audits I/O contracts. Binary name: `dspark-cli`.
 
-Creator and curator are separate models (default: Gemini-class draft + DeepSeek-class I/O curator). Config: `~/.dspark/config.toml`.
+Creator and curator are **roles**, not vendors. You pick both. Typical pairing is a Gemini-class draft plus a DeepSeek-class curator so the reviewer is not the same family that wrote the code (same-model self-review is confirmation-biased).
 
----
-
-# DSpark
-
-> **Dual-LLM Speculative Arbitration Engine** (Rust)
-> *High-Throughput Generation (Gemini) + Deep Reasoning I/O Arbitration (DeepSeek)*
+Config lives in `~/.dspark/config.toml`. This project does not replace or modify `grok` on your machine.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-stable-orange.svg)](https://www.rust-lang.org/)
-[![MCP Ready](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io/)
-[![Google Antigravity Ready](https://img.shields.io/badge/Google_Antigravity-Integrated-4285F4.svg)](https://antigravity.google)
+[![MCP](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io/)
+
+[Português](README.pt-BR.md)
 
 ---
 
-## Overview
+## How it works
 
-**DSpark** is an AI-native agentic framework inspired by *Speculative Decoding* and *Generator-Critic* architectures. The runtime, CLI, MCP server, pipeline, search engine, and curator are implemented in **Rust**. An optional Python SDK remains for notebooks and scripts.
-
-In modern software development:
-
-* **Generators (Google Gemini / GPT / local models):** Excel at high generation speed, massive context windows, rapid codebase indexing, and multi-file editing.
-* **Curators (DeepSeek Reasoner / V4 Pro):** Excel at deep algorithmic reasoning, formal contract verification, edge-case analysis, and mathematical correctness.
-
-**DSpark pairs them together:** a fast model drafts the implementation, while DeepSeek acts as the strict **Chief Architect & Curator**, arbitrating input/output contracts, identifying hidden flaws, and verifying edge cases before code touches production.
-
----
-
-## Architecture
-
-```mermaid
-flowchart TD
-    A[Specification / Task Request] --> B[Generator / Agent]
-    B -->|Fast Code Draft| C[DeepSeek Reasoner Curator]
-    C -->|Reasoning & Formal Verification| D{I/O Contract Audit}
-    D -->|Approved >= 85| E[Verified Production Code]
-    D -->|Flaws / Edge-Case Detected| F[DeepSeek Auto-Refinement Pass]
-    F -->|Synthesized Optimal Fix| E
+```
+spec / task
+    → web research (optional)
+    → creator draft
+    → curator I/O audit (spec, contracts, errors — not the agent's self-score)
+    → refine if needed
+    → re-audit
 ```
 
----
+The curator is LLM-as-a-Verifier: it scores preconditions, postconditions, edge cases, complexity, and resource safety. It must not trust the creator's own assessment. After a refine pass, it audits again.
 
-## Features
-
-- **Rigorous I/O Contract Arbitration**: Validates function signatures, return types, empty states, boundary values, and resource safety.
-- **Deep Reasoning Edge-Case Audit**: Discovers race conditions, off-by-one errors, recursion overflows, and hidden complexity bottlenecks.
-- **Multi-Candidate Arbitration**: Compares multiple AI-generated implementations and synthesizes the optimal hybrid.
-- **Interactive REPL**: Grok Build-style session with `/search`, `/audit`, `/refine`, `/local`, and natural-language tasks.
-- **MCP Server**: Integrates with Cursor, Claude Desktop, Zed, and Antigravity.
-- **Local LLMs**: Auto-detects Ollama, LM Studio, and vLLM.
-- **Native Rust binary**: Fast startup, no Python runtime required for the CLI.
+Search is live: Tavily when `TAVILY_API_KEY` is set, otherwise DuckDuckGo HTML. Empty results stay empty — no fake hits.
 
 ---
 
-## Quick Start
-
-### 1. Install the Rust CLI
+## Install
 
 ```bash
 git clone https://github.com/CostaJr007/dspark.git
@@ -67,97 +39,93 @@ cd dspark
 cargo install --path .
 ```
 
-This produces a standalone `dspark-cli` binary (does not change `grok` on your PATH).
+That installs `dspark-cli` (typically `%USERPROFILE%\.cargo\bin` on Windows, `~/.cargo/bin` elsewhere).
+
+```bash
+dspark-cli --help
+dspark-cli pair
+```
+
+### Environment
+
+```bash
+export DEEPSEEK_API_KEY="sk-..."          # curator default
+export GEMINI_API_KEY="..."               # creator default (optional)
+export OPENAI_API_KEY="..."               # if you pick an OpenAI-family role
+export TAVILY_API_KEY="..."               # optional ranked search
+export DSPARK_CREATOR="gemini-3.7-flash"  # overrides config
+export DSPARK_CURATOR="deepseek-v4-pro"
+```
+
+PowerShell:
+
+```powershell
+$env:DEEPSEEK_API_KEY="sk-..."
+```
+
+### Pair config
+
+Copy [dspark.toml.example](dspark.toml.example) to `%USERPROFILE%\.dspark\config.toml` (or `~/.dspark/config.toml`):
+
+```toml
+creator = "gemini-3.7-flash"
+curator = "deepseek-v4-pro"
+research = true
+```
+
+`dspark-cli pair` prints the active pair and warns if both roles are the same model.
+
+---
+
+## Commands
+
+No-args starts the interactive REPL with the saved pair:
+
+```bash
+dspark-cli
+dspark-cli interactive --generator gemini-3.7-flash --curator deepseek-v4-pro --theme bloomberg
+```
+
+One-shot and utilities:
 
 ```bash
 dspark-cli pair
-dspark-cli
+dspark-cli search "tokio spawn_blocking vs spawn"
+dspark-cli search --deep "FastAPI background tasks"
+dspark-cli fetch https://docs.rs/tokio
+dspark-cli audit src/search.rs --spec "Binary search, O(log N), empty list is valid"
+dspark-cli refine src/lru.rs --spec "O(1) get/put, bounded capacity" --in-place
+dspark-cli arbitrate a.rs b.rs --spec "Lock-free queue"
+dspark-cli run "Bounded LRU cache in Rust" --lang rust --out lru.rs
+dspark-cli local
+dspark-cli "Refactor auth.rs to bcrypt and cover empty password"
 ```
 
-### 2. Configure environment variables
-
-```bash
-# Required for DeepSeek Curator
-export DEEPSEEK_API_KEY="sk-your-deepseek-key"
-
-# Optional
-export DEEPSEEK_MODEL="deepseek-v4-pro"
-export GEMINI_API_KEY="your-gemini-key"
-export OPENAI_API_KEY="your-openai-key"
-```
-
-On Windows PowerShell:
-
-```powershell
-$env:DEEPSEEK_API_KEY="sk-your-deepseek-key"
-```
+REPL slash commands: `/search`, `/fetch`, `/files`, `/read`, `/sh`, `/audit`, `/refine`, `/local`, `/models`, `/theme bloomberg|cyan|matrix`.
 
 ---
 
-## CLI Usage
-
-### Interactive terminal agent
-
-```bash
-dspark
-# or
-dspark interactive --generator gpt-4o-mini --curator deepseek-v4-flash --theme bloomberg
-```
-
-Slash commands inside the session:
-
-* `/search <query>` — deep web research for docs, API specs, and error fixes
-* `/fetch <url>` — scrape a page to clean Markdown
-* `/files [path]` — inspect workspace files
-* `/read <file>` — view a local file
-* `/sh <command>` — run a shell command
-* `/audit <file> -s <spec>` — audit I/O contracts with DeepSeek
-* `/refine <file> -s <spec>` — synthesize a safer implementation in-place
-* `/local` — scan Ollama / LM Studio
-* `/models` — switch generator + curator pairing
-* `/theme bloomberg|grok|matrix`
-
-### Other commands
-
-```bash
-dspark search "FastAPI background tasks best practices"
-dspark fetch https://docs.rs/tokio
-dspark audit src/search.rs --spec "Binary search with O(log N) and empty-list handling"
-dspark refine src/algorithm.rs --spec "Optimize for O(1) auxiliary space" --in-place
-dspark arbitrate candidate_a.rs candidate_b.rs --spec "Lock-free queue specification"
-dspark run "Implement a bounded LRU cache in Rust" --lang rust --out lru.rs
-dspark local
-dspark bench --generator gpt-4o-mini --curator deepseek-v4-flash --limit 5
-dspark "Refactor auth.rs to use bcrypt and verify all edge cases"
-```
-
----
-
-## MCP Server
+## MCP
 
 ```json
 {
   "mcpServers": {
     "dspark": {
-      "command": "dspark",
+      "command": "dspark-cli",
       "args": ["mcp"],
       "env": {
-        "DEEPSEEK_API_KEY": "your-key-here"
+        "DEEPSEEK_API_KEY": "your-key"
       }
     }
   }
 }
 ```
 
-Exposed tools:
-
-* `dspark_audit_code` — deep reasoning audit and I/O validation
-* `dspark_refine_code` — production-ready rewrite with edge-case fixes
-* `dspark_arbitrate` — compare candidates and synthesize the winner
+Tools: `dspark_audit_code`, `dspark_refine_code`, `dspark_arbitrate`.
 
 ---
 
-## Library (Rust)
+## Rust library
 
 ```rust
 use dspark::DeepSeekCurator;
@@ -177,8 +145,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Run the bundled examples (requires `DEEPSEEK_API_KEY`):
-
 ```bash
 cargo run --example simple_audit
 cargo run --example arbitrate_candidates
@@ -188,35 +154,10 @@ cargo run --example arbitrate_candidates
 
 ## Optional Python SDK
 
-The `dspark/` package is an optional compatibility SDK (`pip install -e .`). The `dspark` console script is **not** installed from Python so it cannot shadow the Rust binary. Use `python -m dspark.cli` only if you explicitly want the legacy Python CLI.
-
-```python
-from dspark import DeepSeekCurator
-
-curator = DeepSeekCurator()
-verdict = curator.audit(
-    code="def divide_chunks(l, n):\n    for i in range(0, len(l), n):\n        yield l[i:i + n]",
-    specification="Chunk a list into batches of size n. Handle n <= 0 safely.",
-    language="python",
-)
-print(f"Verdict: {verdict.verdict} (Score: {verdict.score}/100)")
-```
-
----
-
-## Google Antigravity (AGY)
-
-```bash
-mkdir -p .agents/skills
-cp -r skill/dspark .agents/skills/
-```
-
-Then ask:
-
-> *"Use the dspark curator to review and arbitrate the algorithmic I/O contracts for the new auth middleware."*
+The `dspark/` package is a compatibility SDK (`pip install -e .`). It does **not** install a `dspark` console script, so it cannot shadow `dspark-cli`. Use `python -m dspark.cli` only if you want the legacy Python entrypoint.
 
 ---
 
 ## License
 
-MIT License — created by [Adeilson Costa](https://github.com/CostaJr007). Open for contributions.
+MIT — [Adeilson Costa](https://github.com/CostaJr007).

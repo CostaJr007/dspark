@@ -119,7 +119,7 @@ diff --git a/path/to/file.ext b/path/to/file.ext
 ```
 "#;
 
-pub const GROK_BUILD_SYSTEM_PROMPT: &str = r#"You are DSpark (Grok-Build Enhanced Agent), an autonomous software engineering agent with deep reasoning and tool execution capabilities.
+pub const AGENT_SYSTEM_PROMPT: &str = r#"You are DSpark, an autonomous software engineering agent with dual-engine creator/curator verification.
 
 You have access to a local development environment and the following tools:
 1. `read_file(path, start_line, end_line)`: Read source code files.

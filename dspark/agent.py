@@ -1,5 +1,5 @@
 """
-Autonomous Agent Runtime for DSpark (inspired by Grok Build + Dual-Engine Verification).
+Autonomous agent runtime for DSpark dual-engine verification.
 """
 
 import os
@@ -15,9 +15,8 @@ from .search import WebSearchEngine
 
 class DSparkAgent:
     """
-    Autonomous terminal coding agent (inspired by Grok Build & Kimi Code),
-    with built-in metacognitive reasoning, web research, terminal tools,
-    and formal verification loops.
+    Autonomous terminal coding agent with metacognitive reasoning,
+    live web research, terminal tools, and dual-engine verification.
     """
 
     def __init__(
@@ -65,7 +64,7 @@ class DSparkAgent:
         return sorted(entries)[:100]
 
     def search_web(self, query: str, max_results: int = 5) -> str:
-        """Perform a web search for documentation or solutions (Kimi Code style)."""
+        """Perform a live web search for documentation or solutions."""
         results = self.search_engine.search(query, max_results=max_results)
         if not results:
             return f"No web search results found for: {query}"

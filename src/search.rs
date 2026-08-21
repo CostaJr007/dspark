@@ -1,4 +1,4 @@
-//! Kimi-style web search and documentation scraper.
+//! Live web search and documentation scraper (search + fetch).
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};

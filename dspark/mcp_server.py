@@ -1,6 +1,6 @@
 """
 Model Context Protocol (MCP) server implementation for DSpark.
-Enables native integration with Antigravity, Claude Desktop, Cursor, and any MCP client.
+Enables native integration with Cursor, Claude Desktop, and any MCP client.
 """
 
 import json
