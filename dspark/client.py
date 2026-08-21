@@ -109,7 +109,11 @@ class DeepSeekClient:
         choices = res.get("choices", [])
         if not choices:
             raise APIError(500, "Empty choices returned by DeepSeek API")
-        return choices[0]["message"]["content"]
+        msg = choices[0].get("message", {})
+        content = msg.get("content") or ""
+        if not content and msg.get("reasoning_content"):
+            content = msg.get("reasoning_content") or ""
+        return content
 
 
 class GeminiClient:
