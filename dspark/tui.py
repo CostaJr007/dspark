@@ -153,38 +153,41 @@ class GrokBuildTUI:
             console.print(f"[bold red]Unknown theme '{theme_key}'. Available: {', '.join(THEMES.keys())}[/bold red]")
 
     def render_header(self) -> None:
-        grid = Table.grid(expand=True)
-        grid.add_column(justify="left")
-        grid.add_column(justify="right")
-
-        brand_badge = f"[{self.current_theme.primary_color}]⚡ DSPARK[/{self.current_theme.primary_color}] [bold white]v0.1.0[/bold white] │ [dim white]Dual-Engine Speculative AI[/dim white]"
-        status_badges = f"[{self.current_theme.accent_green}]● DeepSeek-V4[/{self.current_theme.accent_green}]  [{self.current_theme.primary_color}]● OpenAI[/{self.current_theme.primary_color}]  [{self.current_theme.accent_yellow}]● Kimi WebSearch[/{self.current_theme.accent_yellow}]  [white]● Bloomberg Terminal[/white]"
-        grid.add_row(brand_badge, status_badges)
-
-        models_info = (
-            f"  [dim white]Generator:[/dim white] [{self.current_theme.accent_yellow} bold]{self.generator_model}[/{self.current_theme.accent_yellow} bold] "
-            f"│ [dim white]Curator:[/dim white] [{self.current_theme.accent_green} bold]{self.curator_model}[/{self.current_theme.accent_green} bold] "
-            f"│ [dim white]Theme:[/dim white] [{self.current_theme.primary_color}]{self.current_theme.name.split(' ')[0]}[/{self.current_theme.primary_color}] "
-            f"│ [dim white]Workspace:[/dim white] [white]{self.working_dir}[/white]"
+        title_line = Text("  ⚡ DSPARK ", style=f"bold {self.current_theme.primary_color}") + Text("v0.1.0 ", style="bold white") + Text("│ Speculative Dual-Engine & Autonomous CLI", style="dim white")
+        badges_line = (
+            Text("  ", style="default")
+            + Text("● DeepSeek-V4  ", style=f"bold {self.current_theme.accent_green}")
+            + Text("● OpenAI  ", style=f"bold {self.current_theme.primary_color}")
+            + Text("● Kimi Search  ", style=f"bold {self.current_theme.accent_yellow}")
+            + Text("● Local Engine", style="bold white")
+        )
+        models_line = (
+            Text("  Generator: ", style="dim white")
+            + Text(f"{self.generator_model}  ", style=f"bold {self.current_theme.accent_yellow}")
+            + Text("│ Curator: ", style="dim white")
+            + Text(f"{self.curator_model}  ", style=f"bold {self.current_theme.accent_green}")
+            + Text("│ Theme: ", style="dim white")
+            + Text(f"{self.current_theme.name.split(' ')[0]}  ", style=f"bold {self.current_theme.primary_color}")
+            + Text("│ Workspace: ", style="dim white")
+            + Text(f"{self.working_dir}", style="white")
         )
 
+        content = Text("\n").join([title_line, badges_line, models_line])
         panel = Panel(
-            grid,
-            subtitle=models_info,
-            subtitle_align="left",
+            content,
             border_style=self.current_theme.border_style,
             padding=(0, 1),
         )
         console.print()
         console.print(panel)
-        console.print(f"[dim]Type instruction in natural language, [{self.current_theme.primary_color}]/theme[/{self.current_theme.primary_color}] for Bloomberg/Grok, [{self.current_theme.primary_color}]/models[/{self.current_theme.primary_color}] to switch models, [{self.current_theme.primary_color}]/help[/{self.current_theme.primary_color}] for commands.[/dim]\n")
+        console.print(f"[dim]Type your instruction, [{self.current_theme.primary_color}]/models[/{self.current_theme.primary_color}] to switch models, [{self.current_theme.primary_color}]/theme[/{self.current_theme.primary_color}] to change palette, [{self.current_theme.primary_color}]/help[/{self.current_theme.primary_color}] for commands.[/dim]\n")
 
     def get_bottom_toolbar(self) -> HTML:
         return HTML(
             f' <b><style fg="{self.current_theme.primary_color}">⚡ DSPARK</style></b> │ '
             f'<style fg="#ffffff">Gen:</style> <b><style fg="{self.current_theme.accent_yellow}">{self.generator_model}</style></b> │ '
             f'<style fg="#ffffff">Curator:</style> <b><style fg="{self.current_theme.accent_green}">{self.curator_model}</style></b> │ '
-            f'<style fg="{self.current_theme.primary_color}">[BLOOMBERG AMBER]</style> │ '
+            f'<style fg="{self.current_theme.primary_color}">[{self.current_theme.name.split(" ")[0].upper()}]</style> │ '
             f'<style fg="#888888">Tab: Complete</style>'
         )
 
@@ -223,8 +226,11 @@ class GrokBuildTUI:
         local_models = []
         active = LocalLLMClient.detect_active_endpoints()
         for s in active:
-            models = LocalLLMClient(base_url=s["v1_url"]).list_models()
-            local_models.extend(models)
+            try:
+                models = LocalLLMClient(base_url=s["v1_url"]).list_models()
+                local_models.extend(models)
+            except Exception:
+                pass
 
         table = Table(
             title="🤖 Select Active AI Models for DSpark Engine",
@@ -252,7 +258,13 @@ class GrokBuildTUI:
         console.print(table)
         console.print()
 
-        choice = input("Select option [1-3, c, q]: ").strip().lower()
+        try:
+            choice = self.session.prompt(
+                HTML(f'<b><style fg="{self.current_theme.primary_color}">Select option [1-3, c, q]</style></b> <style fg="#ffffff">❯</style> ')
+            ).strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            console.print("[dim]Cancelled model switch.[/dim]\n")
+            return
         if choice == "1":
             self.generator_model = "gpt-4o-mini"
             self.curator_model = "deepseek-v4-flash"
