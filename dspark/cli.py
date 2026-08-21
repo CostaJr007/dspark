@@ -183,6 +183,10 @@ def main():
     run_p.add_argument("--lang", "-l", type=str, default=None, help="Programming language")
     run_p.add_argument("--out", "-o", type=str, default=None, help="Output destination file")
 
+    # Command: bench
+    bench_p = subparsers.add_parser("bench", help="Run automated Pass@1 and edge-case benchmark (Baseline vs Dual-Engine)")
+    bench_p.add_argument("--json", "-j", action="store_true", help="Output raw JSON benchmark report")
+
     # Command: interactive / repl
     subparsers.add_parser("interactive", help="Start interactive terminal coding session")
 
@@ -308,6 +312,34 @@ def main():
             else:
                 print("Final Verified Code:")
                 print(res.final_code)
+
+        elif args.command == "bench":
+            from .benchmark import DSparkBenchmarkRunner
+            runner = DSparkBenchmarkRunner()
+            print("\n\033[1;36m=== ⚡ DSPARK AI BENCHMARK SUITE ===\033[0m")
+            print("\033[90mRunning Pass@1 and edge-case evaluation: Baseline vs DSpark Dual-Engine...\033[0m\n")
+
+            report = runner.run_benchmark(progress_callback=lambda msg: print(f"  \033[90m➜\033[0m {msg}"))
+
+            if args.json:
+                import json
+                print(json.dumps(report.__dict__, default=lambda o: o.__dict__, indent=2))
+            else:
+                print("\n\033[1;34m=== 📊 BENCHMARK COMPARATIVE RESULTS ===\033[0m\n")
+                print(f"  Total Problems Evaluated : \033[1m{report.total_problems}\033[0m")
+                print(f"  Baseline Pass@1 Rate     : \033[91m{report.baseline_pass_rate:.1f}%\033[0m ({report.baseline_passed_count}/{report.total_problems})")
+                print(f"  DSpark Dual-Engine Rate  : \033[92m{report.dspark_pass_rate:.1f}%\033[0m ({report.dspark_passed_count}/{report.total_problems})")
+                
+                delta_color = "\033[92m" if report.accuracy_delta >= 0 else "\033[91m"
+                print(f"  Accuracy Improvement     : {delta_color}+{report.accuracy_delta:.1f}%\033[0m\n")
+
+                print("  Detailed Task Breakdown:")
+                for r in report.results:
+                    base_status = "\033[92mPASS\033[0m" if r.baseline_passed else "\033[91mFAIL\033[0m"
+                    dspark_status = "\033[92mPASS\033[0m" if r.dspark_passed else "\033[91mFAIL\033[0m"
+                    print(f"    * [{r.problem_id}] {r.title}")
+                    print(f"      - Baseline: {base_status} ({r.baseline_time_ms:.0f}ms) | DSpark Dual: {dspark_status} (Score: {r.curator_score}/100, Contraexamples: {r.contra_examples_detected})")
+                print()
 
         elif args.command == "mcp":
             run_mcp_server()
