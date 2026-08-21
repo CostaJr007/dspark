@@ -174,4 +174,4 @@ if verdict.refined_code:
 
 ## 📄 License
 
-MIT License - Created by [Adeilton Costa Jr](https://github.com/CostaJr007). Open for contributions!
+MIT License - Created by [Adeilson Costa](https://github.com/CostaJr007). Open for contributions!

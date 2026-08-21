@@ -4,7 +4,7 @@ High-Throughput Code Generation (Gemini) + Deep Reasoning I/O Arbitration (DeepS
 """
 
 __version__ = "0.1.0"
-__author__ = "Adeilton Costa Jr (CostaJr007)"
+__author__ = "Adeilson Costa (CostaJr007)"
 
 from .client import DeepSeekClient, GeminiClient
 from .curator import DeepSeekCurator, CurationVerdict, AuditResult, RefineResult, ArbitrationResult

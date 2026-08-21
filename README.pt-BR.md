@@ -88,4 +88,4 @@ No chat do Antigravity, basta pedir:
 
 ## 📄 Licença
 
-MIT License - Criado por [Adeilton Costa Jr](https://github.com/CostaJr007).
+MIT License - Criado por [Adeilson Costa](https://github.com/CostaJr007).
