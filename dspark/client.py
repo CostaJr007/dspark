@@ -261,6 +261,32 @@ class OpenAIClient:
             raw_err = e.read().decode("utf-8", errors="replace")
             raise APIError(e.code, raw_err, raw_err) from e
 
+    def chat_completion(self, messages: List[Dict[str, str]], model: Optional[str] = None, temperature: float = 0.2) -> Dict[str, Any]:
+        url = f"{self.base_url}/chat/completions"
+        payload = {
+            "model": model or self.default_model,
+            "messages": messages,
+            "temperature": temperature,
+        }
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+                "User-Agent": "DSpark-OpenAI/0.1.0",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                raw_bytes = resp.read()
+                return json.loads(raw_bytes.decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            raw_err = e.read().decode("utf-8", errors="replace")
+            raise APIError(e.code, raw_err, raw_err) from e
+
 
 class LocalLLMClient:
     """
@@ -388,6 +414,37 @@ class LocalLLMClient:
             raise APIError(
                 0,
                 f"Cannot connect to local LLM at {self.base_url}. Make sure Ollama or LM Studio is running. (Reason: {e.reason})",
+            ) from e
+
+    def chat_completion(self, messages: List[Dict[str, str]], model: Optional[str] = None, temperature: float = 0.2) -> Dict[str, Any]:
+        url = f"{self.base_url}/chat/completions"
+        payload = {
+            "model": model or self.default_model,
+            "messages": messages,
+            "temperature": temperature,
+            "stream": False,
+        }
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "DSpark-Local/0.1.0",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                raw_bytes = resp.read()
+                return json.loads(raw_bytes.decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            raw_err = e.read().decode("utf-8", errors="replace")
+            raise APIError(e.code, f"Local LLM error ({self.base_url}): {raw_err}", raw_err) from e
+        except urllib.error.URLError as e:
+            raise APIError(
+                0,
+                f"Cannot connect to local LLM at {self.base_url}. (Reason: {e.reason})",
             ) from e
 
 

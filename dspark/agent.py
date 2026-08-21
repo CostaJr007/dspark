@@ -104,11 +104,22 @@ class DSparkAgent:
         """
         Execute an engineering task enforcing the Metacognitive Reasoning Protocol.
         """
-        messages = [
-            {"role": "system", "content": METACOGNITIVE_ENGINEERING_PROMPT},
-            {"role": "user", "content": f"Working Directory: {self.working_dir}\n\nTask: {user_instruction}"},
-        ]
-
-        response = self.client.chat_completion(messages)
-        content = response["choices"][0]["message"]["content"]
-        return content
+        user_content = f"Working Directory: {self.working_dir}\n\nTask: {user_instruction}"
+        
+        if hasattr(self.client, "complete"):
+            return self.client.complete(
+                prompt=user_content,
+                system_prompt=METACOGNITIVE_ENGINEERING_PROMPT,
+            )
+        elif hasattr(self.client, "chat_completion"):
+            messages = [
+                {"role": "system", "content": METACOGNITIVE_ENGINEERING_PROMPT},
+                {"role": "user", "content": user_content},
+            ]
+            response = self.client.chat_completion(messages)
+            choices = response.get("choices", [])
+            if choices:
+                return choices[0].get("message", {}).get("content", "")
+            return str(response)
+        else:
+            raise ValueError(f"Unknown client type: {type(self.client)}")

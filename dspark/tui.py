@@ -405,9 +405,30 @@ class GrokBuildTUI:
                     console.print(Panel(res, title=f"⚡ Output: {cmd}", border_style=self.current_theme.border_style))
                     continue
 
-                # Standard Natural Language Task -> Execute with live spinner
-                with console.status(f"[bold {self.current_theme.primary_color}]⚡ Executing Metacognitive Reasoning Engine ({self.generator_model} + {self.curator_model})...[/bold {self.current_theme.primary_color}]", spinner="arc"):
-                    response = self.agent.execute_task(user_input)
+                # Standard Natural Language Task -> Execute with GrokAgent tool loop
+                from .grok_agent import GrokAgent
+                grok = GrokAgent(
+                    working_dir=self.working_dir,
+                    generator_model=self.generator_model,
+                    curator_model=self.curator_model,
+                )
+
+                def _on_tool_call(tool_name: str, args: Dict[str, Any]):
+                    arg_summary = ", ".join(f"{k}={str(v)[:40]}" for k, v in args.items())
+                    console.print(f"  [{self.current_theme.primary_color}]➜ Tool Call:[/{self.current_theme.primary_color}] [bold white]{tool_name}[/bold white]({arg_summary})")
+
+                def _on_tool_result(res):
+                    status_style = self.current_theme.accent_green if res.success else self.current_theme.accent_red
+                    status_text = "✓ SUCCESS" if res.success else "✖ FAILED"
+                    snippet = res.output[:180].replace("\n", " ") if res.output else (res.error or "")
+                    console.print(f"    [{status_style}]{status_text}[/{status_style}] [dim]{snippet}...[/dim]")
+
+                with console.status(f"[bold {self.current_theme.primary_color}]⚡ Grok Build Engine ({self.generator_model} + {self.curator_model})...[/bold {self.current_theme.primary_color}]", spinner="arc"):
+                    response = grok.execute_step(
+                        user_prompt=user_input,
+                        on_tool_call=_on_tool_call,
+                        on_tool_result=_on_tool_result,
+                    )
 
                 console.print()
                 console.print(Panel(Markdown(response), title=f"[{self.current_theme.primary_color}]⚡ DSpark Solution[/{self.current_theme.primary_color}]", border_style=self.current_theme.border_style, padding=(1, 2)))
