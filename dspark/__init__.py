@@ -10,7 +10,13 @@ from .client import DeepSeekClient, GeminiClient
 from .curator import DeepSeekCurator, CurationVerdict, AuditResult, RefineResult, ArbitrationResult
 from .generator import GeminiGenerator
 from .pipeline import DSparkPipeline
-from .prompts import CURATOR_SYSTEM_PROMPT, ARBITRATOR_SYSTEM_PROMPT, REFINER_SYSTEM_PROMPT
+from .agent import DSparkAgent
+from .prompts import (
+    CURATOR_SYSTEM_PROMPT,
+    ARBITRATOR_SYSTEM_PROMPT,
+    REFINER_SYSTEM_PROMPT,
+    METACOGNITIVE_ENGINEERING_PROMPT,
+)
 
 __all__ = [
     "DeepSeekClient",
@@ -18,6 +24,7 @@ __all__ = [
     "DeepSeekCurator",
     "GeminiGenerator",
     "DSparkPipeline",
+    "DSparkAgent",
     "CurationVerdict",
     "AuditResult",
     "RefineResult",
@@ -25,4 +32,5 @@ __all__ = [
     "CURATOR_SYSTEM_PROMPT",
     "ARBITRATOR_SYSTEM_PROMPT",
     "REFINER_SYSTEM_PROMPT",
+    "METACOGNITIVE_ENGINEERING_PROMPT",
 ]
