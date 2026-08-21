@@ -34,9 +34,11 @@ from .ui import (
     render_prompt_box,
     render_prompt_bottom,
     render_help_panel,
+    render_model_selector_menu,
     render_search_results,
     render_audit_panel,
 )
+from .client import create_model_client, LocalLLMClient
 
 
 def _read_file_or_string(val: str) -> str:
@@ -47,10 +49,20 @@ def _read_file_or_string(val: str) -> str:
     return val
 
 
-def start_interactive_session(working_dir: Optional[str] = None):
+def start_interactive_session(
+    working_dir: Optional[str] = None,
+    generator_model: str = "gpt-4o-mini",
+    curator_model: str = "deepseek-v4-flash",
+):
     """Interactive Terminal User Interface (TUI) in the style of Grok Build & Claude Code."""
-    agent = DSparkAgent(working_dir=working_dir)
-    render_grok_banner(str(agent.working_dir))
+    current_gen = generator_model
+    current_cur = curator_model
+
+    agent = DSparkAgent(
+        working_dir=working_dir,
+        client=create_model_client(current_gen),
+    )
+    render_grok_banner(str(agent.working_dir), generator_model=current_gen, curator_model=current_cur)
 
     while True:
         try:
@@ -67,11 +79,51 @@ def start_interactive_session(working_dir: Optional[str] = None):
 
             elif user_input in ("/clear", "clear"):
                 os.system("cls" if os.name == "nt" else "clear")
-                render_grok_banner(str(agent.working_dir))
+                render_grok_banner(str(agent.working_dir), generator_model=current_gen, curator_model=current_cur)
                 continue
 
             elif user_input in ("/help", "help"):
                 render_help_panel()
+                continue
+
+            elif user_input in ("/models", "models", "/model", "/select"):
+                # Collect any running local models
+                local_models = []
+                active = LocalLLMClient.detect_active_endpoints()
+                for s in active:
+                    models = LocalLLMClient(base_url=s["v1_url"]).list_models()
+                    local_models.extend(models)
+
+                render_model_selector_menu(current_gen, current_cur, local_models)
+                choice = input(f"{Theme.CYAN}Select option [1-3, c, q]: {Theme.RESET}").strip().lower()
+
+                if choice == "1":
+                    current_gen = "gpt-4o-mini"
+                    current_cur = "deepseek-v4-flash"
+                elif choice == "2":
+                    current_gen = "gemini-3.7-flash"
+                    current_cur = "deepseek-v4-pro"
+                elif choice == "3":
+                    current_gen = "deepseek-v4-flash"
+                    current_cur = "deepseek-v4-pro"
+                elif choice.isdigit() and int(choice) >= 4 and (int(choice) - 4) < len(local_models):
+                    lm = local_models[int(choice) - 4]
+                    current_gen = f"local:{lm}"
+                    current_cur = f"local:{lm}"
+                elif choice == "c":
+                    new_g = input(f"  {Theme.GRAY}Enter Generator model (e.g. gpt-4o, qwen2.5-coder:7b): {Theme.RESET}").strip()
+                    new_c = input(f"  {Theme.GRAY}Enter Curator model (e.g. deepseek-v4-pro, local:deepseek-r1): {Theme.RESET}").strip()
+                    if new_g:
+                        current_gen = new_g
+                    if new_c:
+                        current_cur = new_c
+                elif choice in ("q", ""):
+                    print(f"  {Theme.GRAY}Kept active models.{Theme.RESET}\n")
+                    continue
+
+                agent.client = create_model_client(current_gen)
+                print(f"\n  {Theme.GREEN}✓ Models updated! Active Pairing: {Theme.YELLOW}{current_gen}{Theme.RESET} + {Theme.GREEN}{current_cur}{Theme.RESET}\n")
+                render_grok_banner(str(agent.working_dir), generator_model=current_gen, curator_model=current_cur)
                 continue
 
             elif user_input in ("/local", "local"):
@@ -201,7 +253,9 @@ def main():
     bench_p.add_argument("--json", "-j", action="store_true", help="Output raw JSON benchmark report")
 
     # Command: interactive / repl
-    subparsers.add_parser("interactive", help="Start interactive terminal coding session")
+    inter_p = subparsers.add_parser("interactive", help="Start interactive terminal coding session")
+    inter_p.add_argument("--generator", "-g", type=str, default="gpt-4o-mini", help="Active draft generator model")
+    inter_p.add_argument("--curator", "-c", type=str, default="deepseek-v4-flash", help="Active curator & verifier model")
 
     # Command: mcp
     subparsers.add_parser("mcp", help="Run DSpark as a Model Context Protocol (MCP) server")
@@ -227,7 +281,10 @@ def main():
 
     try:
         if args.command == "interactive":
-            start_interactive_session()
+            start_interactive_session(
+                generator_model=getattr(args, "generator", "gpt-4o-mini"),
+                curator_model=getattr(args, "curator", "deepseek-v4-flash"),
+            )
 
         elif args.command == "search":
             engine = WebSearchEngine()

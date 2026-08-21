@@ -41,7 +41,7 @@ def get_width(max_width: int = 86) -> int:
     return min(cols - 2, max_width)
 
 
-def render_grok_banner(workspace: str) -> None:
+def render_grok_banner(workspace: str, generator_model: str = "gpt-4o-mini", curator_model: str = "deepseek-v4-flash") -> None:
     w = get_width()
     inner = w - 4
 
@@ -50,25 +50,23 @@ def render_grok_banner(workspace: str) -> None:
     mid = f"{Theme.CYAN}├" + "─" * (w - 2) + f"┤{Theme.RESET}"
     bar = f"{Theme.CYAN}│{Theme.RESET}"
 
-    # Status Pills
-    pill_deepseek = f"{Theme.GREEN}●{Theme.RESET} DeepSeek-V4"
-    pill_openai = f"{Theme.BLUE}●{Theme.RESET} OpenAI"
+    # Active Pairing Pills
+    pill_gen = f"{Theme.GRAY}Generator:{Theme.RESET} {Theme.BOLD}{Theme.YELLOW}{generator_model}{Theme.RESET}"
+    pill_cur = f"{Theme.GRAY}Curator:{Theme.RESET} {Theme.BOLD}{Theme.GREEN}{curator_model}{Theme.RESET}"
     pill_kimi = f"{Theme.MAGENTA}●{Theme.RESET} Kimi WebSearch"
-    pill_local = f"{Theme.YELLOW}●{Theme.RESET} Local Offline"
 
     print()
     print(top)
     
     # Title Line
     title_text = f" ⚡ {Theme.BOLD}{Theme.WHITE}DSPARK{Theme.RESET} {Theme.DIM}v0.1.0{Theme.RESET}  {Theme.GRAY}│ Dual-Engine Speculative AI & Autonomous CLI{Theme.RESET}"
-    # Calculate visible len
     print(f"{bar}  {title_text:<{inner + 18}} {bar}")
     
     print(mid)
     
-    # Pills line
-    pills_line = f" {pill_deepseek}   {pill_openai}   {pill_kimi}   {pill_local}"
-    print(f"{bar} {pills_line:<{inner + 28}} {bar}")
+    # Active Models line
+    models_line = f" {pill_gen}  │  {pill_cur}  │  {pill_kimi}"
+    print(f"{bar} {models_line:<{inner + 26}} {bar}")
 
     # Workspace line
     short_ws = workspace if len(workspace) < (inner - 14) else "..." + workspace[-(inner - 17):]
@@ -76,7 +74,36 @@ def render_grok_banner(workspace: str) -> None:
     print(f"{bar} {ws_line:<{inner + 14}} {bar}")
 
     print(bot)
-    print(f"{Theme.DIM}Type your instruction in natural language, {Theme.CYAN}/help{Theme.RESET}{Theme.DIM} for commands, {Theme.CYAN}/exit{Theme.RESET}{Theme.DIM} to quit.{Theme.RESET}\n")
+    print(f"{Theme.DIM}Type your instruction, {Theme.CYAN}/models{Theme.RESET}{Theme.DIM} to switch models, {Theme.CYAN}/help{Theme.RESET}{Theme.DIM} for commands, {Theme.CYAN}/exit{Theme.RESET}{Theme.DIM} to quit.{Theme.RESET}\n")
+
+
+def render_model_selector_menu(current_gen: str, current_cur: str, local_models: List[str]) -> None:
+    w = get_width()
+    inner = w - 4
+    top = f"{Theme.YELLOW}╭── {Theme.BOLD}{Theme.WHITE}Select Active AI Models for DSpark Engine{Theme.RESET}{Theme.YELLOW} " + "─" * (w - 47) + f"╮{Theme.RESET}"
+    bot = f"{Theme.YELLOW}╰" + "─" * (w - 2) + f"╯{Theme.RESET}"
+    bar = f"{Theme.YELLOW}│{Theme.RESET}"
+
+    print(f"\n{top}")
+    print(f"{bar}  {Theme.BOLD}Currently Active Pairing:{Theme.RESET}")
+    print(f"{bar}    • Generator (Draft): {Theme.YELLOW}{Theme.BOLD}{current_gen}{Theme.RESET}")
+    print(f"{bar}    • Curator (Verifier): {Theme.GREEN}{Theme.BOLD}{current_cur}{Theme.RESET}")
+    print(f"{bar}")
+    print(f"{bar}  {Theme.CYAN}{Theme.BOLD}Pre-configured Presets:{Theme.RESET}")
+    print(f"{bar}    \033[1m[1]\033[0m Ultra-Fast & Cost-Efficient:  {Theme.YELLOW}gpt-4o-mini{Theme.RESET} + {Theme.GREEN}deepseek-v4-flash{Theme.RESET}")
+    print(f"{bar}    \033[1m[2]\033[0m Maximum Reasoning Accuracy:    {Theme.YELLOW}gemini-3.7-flash{Theme.RESET} + {Theme.GREEN}deepseek-v4-pro{Theme.RESET}")
+    print(f"{bar}    \033[1m[3]\033[0m Pure DeepSeek Ecosystem:       {Theme.YELLOW}deepseek-v4-flash{Theme.RESET} + {Theme.GREEN}deepseek-v4-pro{Theme.RESET}")
+    
+    if local_models:
+        print(f"{bar}")
+        print(f"{bar}  {Theme.GREEN}{Theme.BOLD}Local Offline Models Detected on your PC:{Theme.RESET}")
+        for idx, lm in enumerate(local_models, start=4):
+            print(f"{bar}    \033[1m[{idx}]\033[0m Local Offline: {Theme.CYAN}local:{lm}{Theme.RESET} + {Theme.GREEN}local:{lm}{Theme.RESET}")
+
+    print(f"{bar}")
+    print(f"{bar}    \033[1m[c]\033[0m Custom (type your own generator and curator models)")
+    print(f"{bar}    \033[1m[q]\033[0m Cancel / Keep current configuration")
+    print(f"{bot}\n")
 
 
 def render_prompt_box() -> str:
@@ -99,6 +126,7 @@ def render_help_panel() -> None:
     bar = f"{Theme.BLUE}│{Theme.RESET}"
 
     commands = [
+        ("/models", "🤖 Interactively switch active Generator & Curator models"),
         ("/search <query>", "🔍 Deep Web Search for docs, APIs and errors (Kimi style)"),
         ("/fetch <url>", "📄 Fetch URL and convert to clean Markdown documentation"),
         ("/audit <file> -s <spec>", "⚖️  Audit code against strict I/O contracts & edge cases"),

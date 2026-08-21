@@ -24,11 +24,12 @@ class DSparkAgent:
         self,
         working_dir: Optional[str] = None,
         model: Optional[str] = None,
+        client: Optional[Any] = None,
         curator: Optional[DeepSeekCurator] = None,
         search_engine: Optional[WebSearchEngine] = None,
     ):
         self.working_dir = working_dir or os.getcwd()
-        self.client = DeepSeekClient(default_model=model)
+        self.client = client or DeepSeekClient(default_model=model)
         self.curator = curator or DeepSeekCurator()
         self.search_engine = search_engine or WebSearchEngine()
         self.history: List[Dict[str, str]] = []
