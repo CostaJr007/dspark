@@ -1,30 +1,36 @@
 """
 DSpark AI Code Generation Benchmark Suite.
-Measures Pass@1, edge-case resilience, and accuracy gain: Single-LLM Baseline vs DSpark Dual-Engine.
-Inspired by HumanEval+, SWE-bench, and LiveCodeBench.
+Integrates the Official OpenAI HumanEval (164 problems) & EvalPlus dataset.
+Measures Pass@1, edge-case resilience, and empirical accuracy delta: Baseline vs DSpark Dual-Engine.
 """
 
 from dataclasses import dataclass, field
+import gzip
+import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
 import time
+import urllib.request
 from typing import Callable, Dict, List, Optional
 
 from .client import DeepSeekClient
 from .curator import DeepSeekCurator
-from .pipeline import DSparkPipeline
+
+
+OPENAI_HUMANEVAL_URL = "https://github.com/openai/human-eval/raw/master/data/HumanEval.jsonl.gz"
 
 
 @dataclass
-class BenchmarkProblem:
-    id: str
-    title: str
-    specification: str
-    canonical_test_code: str
-    edge_cases_description: str
+class HumanEvalTask:
+    task_id: str
+    prompt: str
+    entry_point: str
+    canonical_solution: str
+    test: str
 
 
 @dataclass
@@ -41,6 +47,7 @@ class TaskEvaluationResult:
 
 @dataclass
 class BenchmarkReport:
+    dataset_name: str
     total_problems: int
     baseline_passed_count: int
     dspark_passed_count: int
@@ -50,81 +57,51 @@ class BenchmarkReport:
     results: List[TaskEvaluationResult] = field(default_factory=list)
 
 
-# Curated benchmark dataset of challenging edge-case problems
-BENCHMARK_DATASET: List[BenchmarkProblem] = [
-    BenchmarkProblem(
-        id="DSP-01",
-        title="Safe Binary Search with Boundary & Type Safety",
-        specification="""Write a function `binary_search(arr: list[int], target: int) -> int`
-        Requirements:
-        - Return index of target if found in sorted list, else return -1.
-        - Must handle empty list `[]` returning -1 without IndexError.
-        - Must handle target smaller than min or greater than max.
-        - Must achieve O(log N) time complexity.
-        """,
-        canonical_test_code="""
-assert binary_search([], 5) == -1, "Failed on empty list"
-assert binary_search([1, 3, 5, 7, 9], 5) == 2, "Failed on target in middle"
-assert binary_search([1, 3, 5, 7, 9], 1) == 0, "Failed on target at start"
-assert binary_search([1, 3, 5, 7, 9], 9) == 4, "Failed on target at end"
-assert binary_search([1, 3, 5, 7, 9], 0) == -1, "Failed on target smaller than min"
-assert binary_search([1, 3, 5, 7, 9], 10) == -1, "Failed on target greater than max"
-assert binary_search([2], 2) == 0, "Failed on single-element match"
-assert binary_search([2], 3) == -1, "Failed on single-element non-match"
-print("ALL TESTS PASSED")
-""",
-        edge_cases_description="Empty array, single element, search boundaries (0 and N-1), off-by-one errors.",
-    ),
-    BenchmarkProblem(
-        id="DSP-02",
-        title="Sliding Window Maximum (O(N) Deque Invariant)",
-        specification="""Write a function `max_sliding_window(nums: list[int], k: int) -> list[int]`
-        Requirements:
-        - Return maximum value in every sliding window of size k moving from left to right.
-        - If `nums` is empty or `k <= 0`, return `[]`.
-        - If `k >= len(nums)`, return `[max(nums)]`.
-        - Must run in strictly O(N) time using deque/monotonic queue.
-        """,
-        canonical_test_code="""
-assert max_sliding_window([], 3) == [], "Failed on empty list"
-assert max_sliding_window([1, 3, -1, -3, 5, 3, 6, 7], 3) == [3, 3, 5, 5, 6, 7], "Failed standard window"
-assert max_sliding_window([1], 1) == [1], "Failed single element"
-assert max_sliding_window([1, -1], 1) == [1, -1], "Failed k=1"
-assert max_sliding_window([9, 11], 5) == [11], "Failed k > len"
-assert max_sliding_window([7, 2, 4], 2) == [7, 4], "Failed decreasing window"
-print("ALL TESTS PASSED")
-""",
-        edge_cases_description="k > len(nums), k <= 0, empty list, negative values, monotonic decreasing inputs.",
-    ),
-    BenchmarkProblem(
-        id="DSP-03",
-        title="LRU Cache with O(1) Operations & Capacity Invariants",
-        specification="""Implement class `LRUCache`:
-        - `__init__(self, capacity: int)`: initialize with positive capacity. Handle capacity <= 0 gracefully (treat as 0 capacity).
-        - `get(self, key: int) -> int`: return value if present and mark as recently used, else return -1.
-        - `put(self, key: int, value: int) -> None`: update or insert key-value. If size exceeds capacity, evict least recently used.
-        - Both get and put must strictly run in O(1) average time complexity.
-        """,
-        canonical_test_code="""
-cache = LRUCache(2)
-cache.put(1, 1)
-cache.put(2, 2)
-assert cache.get(1) == 1, "Failed to get existing key"
-cache.put(3, 3) # evicts key 2
-assert cache.get(2) == -1, "Failed to evict least recently used key 2"
-cache.put(4, 4) # evicts key 1
-assert cache.get(1) == -1, "Failed to evict key 1"
-assert cache.get(3) == 3, "Key 3 should be present"
-assert cache.get(4) == 4, "Key 4 should be present"
-# Test zero capacity edge case
-empty_cache = LRUCache(0)
-empty_cache.put(1, 100)
-assert empty_cache.get(1) == -1, "Capacity 0 should store nothing"
-print("ALL TESTS PASSED")
-""",
-        edge_cases_description="Zero capacity, cache eviction order updates on get(), overwriting existing keys without increasing size.",
-    ),
-]
+def get_dataset_cache_dir() -> str:
+    home = os.path.expanduser("~")
+    cache_dir = os.path.join(home, ".dspark", "datasets")
+    os.makedirs(cache_dir, exist_ok=True)
+    return cache_dir
+
+
+def load_official_humaneval() -> List[HumanEvalTask]:
+    """
+    Downloads and caches the official OpenAI HumanEval dataset (164 tasks).
+    """
+    cache_dir = get_dataset_cache_dir()
+    cache_file = os.path.join(cache_dir, "HumanEval.jsonl")
+
+    if not os.path.exists(cache_file):
+        req = urllib.request.Request(
+            OPENAI_HUMANEVAL_URL,
+            headers={"User-Agent": "DSpark-Benchmark/0.1.0"}
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            compressed_data = resp.read()
+
+        buf = io.BytesIO(compressed_data)
+        with gzip.GzipFile(fileobj=buf) as gz_file:
+            raw_lines = gz_file.read().decode("utf-8")
+
+        with open(cache_file, "w", encoding="utf-8") as f:
+            f.write(raw_lines)
+
+    tasks: List[HumanEvalTask] = []
+    with open(cache_file, "r", encoding="utf-8") as f:
+        for line in f:
+            if line.strip():
+                item = json.loads(line)
+                tasks.append(
+                    HumanEvalTask(
+                        task_id=item["task_id"],
+                        prompt=item["prompt"],
+                        entry_point=item["entry_point"],
+                        canonical_solution=item.get("canonical_solution", ""),
+                        test=item["test"],
+                    )
+                )
+
+    return tasks
 
 
 class DSparkBenchmarkRunner:
@@ -136,9 +113,21 @@ class DSparkBenchmarkRunner:
         self.curator = curator or DeepSeekCurator()
         self.client = self.curator.client
 
-    def _execute_in_sandbox(self, code: str, test_code: str) -> bool:
-        """Executes candidate code + test assertions in a dedicated isolated Python process."""
-        combined_script = f"{code}\n\n# --- CANONICAL TEST HARNESS ---\n{test_code}"
+    def _execute_humaneval_in_sandbox(self, code: str, entry_point: str, test_code: str) -> bool:
+        """Executes candidate code with the official OpenAI check(entry_point) harness."""
+        combined_script = f"""
+{code}
+
+# --- OFFICIAL OPENAI TEST HARNESS ---
+{test_code}
+
+try:
+    check({entry_point})
+    print("ALL_TESTS_PASSED_OFFICIAL")
+except Exception as e:
+    print(f"FAILED: {{e}}")
+    sys.exit(1)
+"""
         with tempfile.NamedTemporaryFile(suffix=".py", mode="w", encoding="utf-8", delete=False) as f:
             f.write(combined_script)
             temp_path = f.name
@@ -148,9 +137,9 @@ class DSparkBenchmarkRunner:
                 [sys.executable, temp_path],
                 capture_output=True,
                 text=True,
-                timeout=5,
+                timeout=6,
             )
-            return res.returncode == 0 and "ALL TESTS PASSED" in res.stdout
+            return res.returncode == 0 and "ALL_TESTS_PASSED_OFFICIAL" in res.stdout
         except Exception:
             return False
         finally:
@@ -160,43 +149,58 @@ class DSparkBenchmarkRunner:
                 except Exception:
                     pass
 
-    def run_benchmark(
+    def run_official_humaneval_benchmark(
         self,
-        problems: Optional[List[BenchmarkProblem]] = None,
+        limit: Optional[int] = 10,
+        start_idx: int = 0,
         progress_callback: Optional[Callable[[str], None]] = None,
     ) -> BenchmarkReport:
-        target_problems = problems or BENCHMARK_DATASET
+        """
+        Runs the official OpenAI HumanEval benchmark comparing Baseline vs DSpark Dual-Engine.
+        """
+        all_tasks = load_official_humaneval()
+        end_idx = start_idx + limit if limit else len(all_tasks)
+        tasks = all_tasks[start_idx:end_idx]
+
         results: List[TaskEvaluationResult] = []
 
-        for prob in target_problems:
+        for idx, task in enumerate(tasks, 1):
+            task_name = f"{task.task_id} ({task.entry_point})"
             if progress_callback:
-                progress_callback(f"Evaluating {prob.id}: {prob.title}...")
+                progress_callback(f"[{idx}/{len(tasks)}] Evaluating {task_name}...")
 
-            # 1. Generate Baseline (Fast One-Shot Prompt)
+            # 1. Baseline Run (Fast Single Model Generation)
             t0 = time.time()
-            baseline_prompt = f"Implement in Python:\n{prob.specification}\nReturn only the Python code in a markdown code block."
+            prompt = (
+                f"Complete the following Python function following its docstring strictly:\n\n"
+                f"{task.prompt}\n\n"
+                f"Return only the complete Python code implementing this function."
+            )
             try:
-                baseline_code_raw = self.client.complete(baseline_prompt, temperature=0.7)
-                # Extract code block
-                import re
-                m = re.search(r"```(?:python)?\n(.*?)```", baseline_code_raw, re.DOTALL)
-                baseline_code = m.group(1).strip() if m else baseline_code_raw.strip()
+                raw_baseline = self.client.complete(prompt, temperature=0.2)
+                m = re.search(r"```(?:python)?\n(.*?)```", raw_baseline, re.DOTALL)
+                baseline_code = m.group(1).strip() if m else raw_baseline.strip()
             except Exception:
                 baseline_code = ""
-            baseline_time = (time.time() - t0) * 1000
-            baseline_passed = self._execute_in_sandbox(baseline_code, prob.canonical_test_code)
 
-            # 2. Generate DSpark Dual-Engine (Audit + Refine Guided by Counter-Examples)
+            baseline_time = (time.time() - t0) * 1000
+            baseline_passed = self._execute_humaneval_in_sandbox(baseline_code, task.entry_point, task.test)
+
+            # 2. DSpark Dual-Engine Run (DeepSeek Verifier Audit & Refinement)
             t1 = time.time()
             try:
-                audit = self.curator.audit(code=baseline_code, specification=prob.specification, language="python")
+                audit = self.curator.audit(
+                    code=baseline_code,
+                    specification=task.prompt,
+                    language="python",
+                )
                 if audit.is_approved and audit.refined_code is None:
                     dspark_code = baseline_code
                 else:
                     refine = self.curator.refine(
                         code=baseline_code,
-                        specification=prob.specification,
-                        feedback="\n".join(audit.critical_issues + [ec.case for ec in audit.edge_cases]),
+                        specification=task.prompt,
+                        feedback="\n".join(audit.critical_issues + [e.case for e in audit.edge_cases]),
                         language="python",
                     )
                     dspark_code = refine.refined_code
@@ -206,13 +210,14 @@ class DSparkBenchmarkRunner:
                 dspark_code = baseline_code
                 curator_score = 50
                 contra_count = 0
+
             dspark_time = (time.time() - t1) * 1000
-            dspark_passed = self._execute_in_sandbox(dspark_code, prob.canonical_test_code)
+            dspark_passed = self._execute_humaneval_in_sandbox(dspark_code, task.entry_point, task.test)
 
             results.append(
                 TaskEvaluationResult(
-                    problem_id=prob.id,
-                    title=prob.title,
+                    problem_id=task.task_id,
+                    title=task.entry_point,
                     baseline_passed=baseline_passed,
                     dspark_passed=dspark_passed,
                     baseline_time_ms=baseline_time,
@@ -231,6 +236,7 @@ class DSparkBenchmarkRunner:
         delta = dspark_rate - base_rate
 
         return BenchmarkReport(
+            dataset_name="OpenAI HumanEval (Official)",
             total_problems=total,
             baseline_passed_count=base_pass,
             dspark_passed_count=dspark_pass,

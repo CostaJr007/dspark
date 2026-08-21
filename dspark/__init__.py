@@ -12,7 +12,7 @@ from .generator import GeminiGenerator
 from .pipeline import DSparkPipeline
 from .agent import DSparkAgent
 from .search import WebSearchEngine, HTMLToMarkdownParser, SearchResult
-from .benchmark import DSparkBenchmarkRunner, BenchmarkProblem, BenchmarkReport
+from .benchmark import DSparkBenchmarkRunner, HumanEvalTask, BenchmarkReport
 from .prompts import (
     CURATOR_SYSTEM_PROMPT,
     ARBITRATOR_SYSTEM_PROMPT,
@@ -31,7 +31,7 @@ __all__ = [
     "HTMLToMarkdownParser",
     "SearchResult",
     "DSparkBenchmarkRunner",
-    "BenchmarkProblem",
+    "HumanEvalTask",
     "BenchmarkReport",
     "CurationVerdict",
     "AuditResult",
