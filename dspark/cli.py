@@ -76,10 +76,26 @@ def start_interactive_session(working_dir: Optional[str] = None):
                 print("  \033[92m/files [path]\033[0m         - List files in current workspace")
                 print("  \033[92m/read <file>\033[0m          - Read and view a local file")
                 print("  \033[92m/sh <command>\033[0m         - Run a local shell command (e.g. pytest, git status)")
+                print("  \033[92m/local\033[0m                - Scan and list locally running offline models (Ollama/LM Studio)")
                 print("  \033[92m/audit <file> -s <spec>\033[0m- Audit a file against strict I/O contracts")
                 print("  \033[92m/refine <file> -s <spec>\033[0m- Refine code in-place with DeepSeek")
                 print("  \033[92m/clear\033[0m                - Clear terminal screen")
                 print("  \033[92m/exit\033[0m                 - Exit session\n")
+                continue
+
+            elif user_input in ("/local", "local"):
+                from .client import LocalLLMClient
+                active = LocalLLMClient.detect_active_endpoints()
+                if not active:
+                    print("\n\033[93mNo active local LLM detected. Start Ollama (ollama run qwen2.5-coder:1.5b) or LM Studio.\033[0m\n")
+                else:
+                    print(f"\n\033[92mFound {len(active)} active local server(s):\033[0m")
+                    for s in active:
+                        print(f"  * {s['name']} ({s['v1_url']})")
+                        models = LocalLLMClient(base_url=s['v1_url']).list_models()
+                        for m in models:
+                            print(f"    - \033[96m{m}\033[0m")
+                    print()
                 continue
 
             elif user_input.startswith("/search "):
@@ -198,6 +214,11 @@ def main():
 
     # Command: mcp
     subparsers.add_parser("mcp", help="Run DSpark as a Model Context Protocol (MCP) server")
+
+    # Command: local (Manage & detect local offline models)
+    local_p = subparsers.add_parser("local", help="Scan, list and test local offline LLMs (Ollama, LM Studio, vLLM)")
+    local_p.add_argument("--url", "-u", type=str, default=None, help="Custom local endpoint URL (default: auto-detect)")
+    local_p.add_argument("--test", "-t", type=str, default=None, help="Test generate with a specific local model")
 
     # If user provided a single string argument that is not a known command, treat as one-shot task
     if len(sys.argv) == 2 and not sys.argv[1].startswith("-") and sys.argv[1] not in subparsers.choices:
@@ -361,6 +382,37 @@ def main():
                     print(f"    * [{r.problem_id}] {r.title}")
                     print(f"      - Baseline: {base_status} ({r.baseline_time_ms:.0f}ms) | DSpark Dual: {dspark_status} (Score: {r.curator_score}/100, Contraexamples: {r.contra_examples_detected})")
                 print()
+
+        elif args.command == "local":
+            from .client import LocalLLMClient
+            print("\n\033[1;36m=== 💻 DSPARK LOCAL & OFFLINE LLM SCANNER ===\033[0m\n")
+            active = LocalLLMClient.detect_active_endpoints()
+
+            if not active:
+                print("  \033[93m[!] No active local LLM servers detected on localhost.\033[0m\n")
+                print("  To run models locally (100% free and private):")
+                print("    1. Install Ollama: \033[1mhttps://ollama.com\033[0m")
+                print("    2. Start a model in terminal: \033[1mollama run qwen2.5-coder:1.5b\033[0m (or deepseek-r1:1.5b)")
+                print("    3. Or start LM Studio with local server enabled on port 1234\n")
+            else:
+                print(f"  \033[92m[✓] Found {len(active)} active local LLM endpoint(s):\033[0m")
+                for s in active:
+                    print(f"    * \033[1m{s['name']}\033[0m: {s['v1_url']}")
+                    client = LocalLLMClient(base_url=s['v1_url'])
+                    models = client.list_models()
+                    if models:
+                        print("      Available local models:")
+                        for m in models:
+                            print(f"        - \033[96m{m}\033[0m")
+                    else:
+                        print("      (Server running, no models pulled yet)")
+                print()
+
+            if args.test:
+                print(f"  Testing generation with local model '\033[1m{args.test}\033[0m'...")
+                client = LocalLLMClient(base_url=args.url)
+                res = client.complete("Write a python one-liner to reverse a list.", model=args.test)
+                print(f"\n  \033[92m[✓] Model Response:\033[0m\n{res}\n")
 
         elif args.command == "mcp":
             run_mcp_server()

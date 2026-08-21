@@ -262,18 +262,138 @@ class OpenAIClient:
             raise APIError(e.code, raw_err, raw_err) from e
 
 
+class LocalLLMClient:
+    """
+    Client for running local, offline LLMs via Ollama, LM Studio, vLLM, or LocalAI.
+    Zero cloud API keys required. 100% private and offline.
+    """
+
+    KNOWN_LOCAL_ENDPOINTS = [
+        ("Ollama", "http://localhost:11434/v1", "http://localhost:11434/api/tags"),
+        ("LM Studio", "http://localhost:1234/v1", "http://localhost:1234/v1/models"),
+        ("vLLM / LocalAI", "http://localhost:8000/v1", "http://localhost:8000/v1/models"),
+    ]
+    DEFAULT_LOCAL_MODEL = "qwen2.5-coder:1.5b"
+
+    def __init__(
+        self,
+        base_url: Optional[str] = None,
+        default_model: Optional[str] = None,
+        timeout: int = 180,
+    ):
+        self.base_url = (base_url or os.environ.get("LOCAL_LLM_URL") or os.environ.get("OLLAMA_BASE_URL") or "http://localhost:11434/v1").rstrip("/")
+        self.default_model = default_model or os.environ.get("LOCAL_LLM_MODEL") or self.DEFAULT_LOCAL_MODEL
+        self.timeout = timeout
+
+    @classmethod
+    def detect_active_endpoints(cls) -> List[Dict[str, str]]:
+        """Scans localhost for active local LLM servers."""
+        active = []
+        for name, v1_url, check_url in cls.KNOWN_LOCAL_ENDPOINTS:
+            try:
+                req = urllib.request.Request(check_url, headers={"User-Agent": "DSpark-Local-Detector"})
+                with urllib.request.urlopen(req, timeout=1.2) as resp:
+                    if resp.status in (200, 204):
+                        active.append({"name": name, "v1_url": v1_url, "check_url": check_url})
+            except Exception:
+                pass
+        return active
+
+    def list_models(self) -> List[str]:
+        """Lists all locally installed models on the active server."""
+        try:
+            # Try /v1/models
+            req = urllib.request.Request(f"{self.base_url}/models", headers={"User-Agent": "DSpark-Local"})
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                return [m["id"] for m in data.get("data", [])]
+        except Exception:
+            pass
+
+        # Try Ollama /api/tags
+        try:
+            root_url = self.base_url.replace("/v1", "")
+            req = urllib.request.Request(f"{root_url}/api/tags", headers={"User-Agent": "DSpark-Local"})
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                return [m["name"] for m in data.get("models", [])]
+        except Exception:
+            return []
+
+    def complete(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+        temperature: float = 0.2,
+        response_format: Optional[Dict[str, str]] = None,
+    ) -> str:
+        url = f"{self.base_url}/chat/completions"
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        payload = {
+            "model": model or self.default_model,
+            "messages": messages,
+            "temperature": temperature,
+            "stream": False,
+        }
+        if response_format:
+            payload["response_format"] = response_format
+
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "DSpark-Local/0.1.0",
+            },
+            method="POST",
+        )
+
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                raw_bytes = resp.read()
+                data_json = json.loads(raw_bytes.decode("utf-8"))
+                choices = data_json.get("choices", [])
+                if not choices:
+                    raise APIError(500, f"Empty response returned by local LLM server at {self.base_url}")
+                msg = choices[0].get("message", {})
+                return msg.get("content") or msg.get("reasoning_content") or ""
+        except urllib.error.HTTPError as e:
+            raw_err = e.read().decode("utf-8", errors="replace")
+            raise APIError(e.code, f"Local LLM error ({self.base_url}): {raw_err}", raw_err) from e
+        except urllib.error.URLError as e:
+            raise APIError(
+                0,
+                f"Cannot connect to local LLM at {self.base_url}. Make sure Ollama or LM Studio is running. (Reason: {e.reason})",
+            ) from e
+
+
 def create_model_client(model_or_provider: str):
     """
-    Factory function resolving model identifier (e.g. 'gpt-4o-mini', 'deepseek-v4-flash', 'deepseek-v4-pro', 'gemini-2.5-flash').
+    Factory function resolving model identifier:
+    - Cloud: 'gpt-4o-mini', 'deepseek-v4-flash', 'deepseek-v4-pro', 'gemini-3.7-flash'
+    - Local: 'local:qwen2.5-coder:1.5b', 'ollama:deepseek-r1:1.5b', 'lmstudio:llama-3.2-3b'
     """
-    spec = model_or_provider.lower().strip()
-    if spec.startswith("openai:") or "gpt-" in spec:
+    spec = model_or_provider.strip()
+    spec_lower = spec.lower()
+
+    if spec_lower.startswith("local:") or spec_lower.startswith("ollama:") or spec_lower.startswith("lmstudio:"):
+        model_name = spec.split(":", 1)[1]
+        base_url = "http://localhost:1234/v1" if spec_lower.startswith("lmstudio:") else "http://localhost:11434/v1"
+        return LocalLLMClient(base_url=base_url, default_model=model_name)
+    elif spec_lower.startswith("openai:") or "gpt-" in spec_lower:
         model_name = spec.split(":", 1)[1] if ":" in spec else spec
         return OpenAIClient(default_model=model_name)
-    elif spec.startswith("gemini:") or "gemini" in spec:
+    elif spec_lower.startswith("gemini:") or "gemini" in spec_lower:
         model_name = spec.split(":", 1)[1] if ":" in spec else spec
         return GeminiClient(default_model=model_name)
     else:
         model_name = spec.split(":", 1)[1] if ":" in spec else spec
         return DeepSeekClient(default_model=model_name)
+
 

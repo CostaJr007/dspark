@@ -6,8 +6,8 @@ High-Throughput Code Generation (Gemini) + Deep Reasoning I/O Arbitration (DeepS
 __version__ = "0.1.0"
 __author__ = "Adeilson Costa (CostaJr007)"
 
-from .client import DeepSeekClient, GeminiClient
-from .curator import DeepSeekCurator, CurationVerdict, AuditResult, RefineResult, ArbitrationResult
+from .client import DeepSeekClient, GeminiClient, OpenAIClient, LocalLLMClient
+from .curator import DeepSeekCurator, CurationVerdict, AuditResult, RefineResult, ArbitrationResult, CounterExample
 from .generator import GeminiGenerator
 from .pipeline import DSparkPipeline
 from .agent import DSparkAgent
@@ -23,6 +23,8 @@ from .prompts import (
 __all__ = [
     "DeepSeekClient",
     "GeminiClient",
+    "OpenAIClient",
+    "LocalLLMClient",
     "DeepSeekCurator",
     "GeminiGenerator",
     "DSparkPipeline",
@@ -37,6 +39,7 @@ __all__ = [
     "AuditResult",
     "RefineResult",
     "ArbitrationResult",
+    "CounterExample",
     "CURATOR_SYSTEM_PROMPT",
     "ARBITRATOR_SYSTEM_PROMPT",
     "REFINER_SYSTEM_PROMPT",

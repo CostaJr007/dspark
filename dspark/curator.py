@@ -127,12 +127,20 @@ def _extract_code_blocks(text: str) -> str:
 
 class DeepSeekCurator:
     """
-    Curator and Arbitrator engine powered by DeepSeek Reasoning models.
+    Curator and Arbitrator engine powered by DeepSeek Reasoning, OpenAI, or Local LLMs.
     """
 
-    def __init__(self, client: Optional[DeepSeekClient] = None, model: Optional[str] = None):
-        self.client = client or DeepSeekClient()
-        self.model = model or self.client.default_model
+    def __init__(self, client: Optional[Any] = None, model: Optional[str] = None):
+        if client:
+            self.client = client
+            self.model = model or getattr(client, "default_model", None)
+        elif model:
+            from .client import create_model_client
+            self.client = create_model_client(model)
+            self.model = getattr(self.client, "default_model", model)
+        else:
+            self.client = DeepSeekClient()
+            self.model = self.client.default_model
 
     def audit(
         self,
