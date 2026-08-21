@@ -1,0 +1,8 @@
+# GitHub Linguist Overrides
+# Tells GitHub that Rust (src/) is the core language of this project
+
+dspark/** linguist-vendored=true
+tests/** linguist-vendored=true
+setup.py linguist-vendored=true
+pyproject.toml linguist-vendored=true
+src/** linguist-detectable=true
