@@ -1,4 +1,4 @@
-//! DeepSeek and Gemini API clients in Rust.
+//! Multi-provider LLM clients in Rust (DeepSeek, OpenAI, Local Ollama/LM Studio).
 
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -63,7 +63,7 @@ impl DeepSeekClient {
             .unwrap_or_else(|_| "https://api.deepseek.com".to_string());
         
         let model = env::var("DEEPSEEK_MODEL")
-            .unwrap_or_else(|_| "deepseek-v4-pro".to_string());
+            .unwrap_or_else(|_| "deepseek-v4-flash".to_string());
 
         Ok(Self {
             api_key,
@@ -131,6 +131,156 @@ impl DeepSeekClient {
             }
             if let Some(reasoning) = choice.message.reasoning_content {
                 return Ok(reasoning);
+            }
+        }
+
+        Ok(String::new())
+    }
+}
+
+pub struct OpenAIClient {
+    api_key: String,
+    base_url: String,
+    pub model: String,
+    http: reqwest::Client,
+}
+
+impl OpenAIClient {
+    pub fn new(model: Option<&str>) -> Result<Self, ClientError> {
+        let api_key = env::var("OPENAI_API_KEY")
+            .map_err(|_| ClientError::MissingApiKey("OPENAI_API_KEY environment variable not set".into()))?;
+        
+        let base_url = env::var("OPENAI_BASE_URL")
+            .unwrap_or_else(|_| "https://api.openai.com/v1".to_string());
+        
+        let model = model
+            .map(|s| s.to_string())
+            .or_else(|| env::var("OPENAI_MODEL").ok())
+            .unwrap_or_else(|| "gpt-4o-mini".to_string());
+
+        Ok(Self {
+            api_key,
+            base_url,
+            model,
+            http: reqwest::Client::builder()
+                .user_agent("DSpark-Rust/0.1.0")
+                .build()?,
+        })
+    }
+
+    pub async fn complete(
+        &self,
+        prompt: &str,
+        system_prompt: Option<&str>,
+        temperature: f32,
+    ) -> Result<String, ClientError> {
+        let mut messages = Vec::new();
+        if let Some(sys) = system_prompt {
+            messages.push(ChatMessage {
+                role: "system".into(),
+                content: sys.into(),
+            });
+        }
+        messages.push(ChatMessage {
+            role: "user".into(),
+            content: prompt.into(),
+        });
+
+        let req_body = ChatCompletionRequest {
+            model: self.model.clone(),
+            messages,
+            temperature,
+            response_format: None,
+        };
+
+        let url = format!("{}/chat/completions", self.base_url);
+        let resp = self
+            .http
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .json(&req_body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status().as_u16();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(ClientError::ApiError { status, message: text });
+        }
+
+        let body: ChatCompletionResponse = resp.json().await?;
+        if let Some(choice) = body.choices.into_iter().next() {
+            if let Some(content) = choice.message.content {
+                return Ok(content);
+            }
+        }
+
+        Ok(String::new())
+    }
+}
+
+pub struct LocalLLMClient {
+    base_url: String,
+    pub model: String,
+    http: reqwest::Client,
+}
+
+impl LocalLLMClient {
+    pub fn new(base_url: Option<&str>, model: Option<&str>) -> Result<Self, ClientError> {
+        let base_url = base_url
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "http://localhost:11434/v1".to_string());
+        let model = model
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "qwen2.5-coder:1.5b".to_string());
+
+        Ok(Self {
+            base_url,
+            model,
+            http: reqwest::Client::builder()
+                .user_agent("DSpark-Rust-Local/0.1.0")
+                .build()?,
+        })
+    }
+
+    pub async fn complete(
+        &self,
+        prompt: &str,
+        system_prompt: Option<&str>,
+        temperature: f32,
+    ) -> Result<String, ClientError> {
+        let mut messages = Vec::new();
+        if let Some(sys) = system_prompt {
+            messages.push(ChatMessage {
+                role: "system".into(),
+                content: sys.into(),
+            });
+        }
+        messages.push(ChatMessage {
+            role: "user".into(),
+            content: prompt.into(),
+        });
+
+        let req_body = ChatCompletionRequest {
+            model: self.model.clone(),
+            messages,
+            temperature,
+            response_format: None,
+        };
+
+        let url = format!("{}/chat/completions", self.base_url);
+        let resp = self.http.post(&url).json(&req_body).send().await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status().as_u16();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(ClientError::ApiError { status, message: text });
+        }
+
+        let body: ChatCompletionResponse = resp.json().await?;
+        if let Some(choice) = body.choices.into_iter().next() {
+            if let Some(content) = choice.message.content {
+                return Ok(content);
             }
         }
 
