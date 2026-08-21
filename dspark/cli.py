@@ -186,6 +186,8 @@ def main():
     # Command: bench
     bench_p = subparsers.add_parser("bench", help="Run automated Pass@1 benchmark (Official OpenAI HumanEval & Edge-Case Suite)")
     bench_p.add_argument("--official", "-o", type=str, default="humaneval", choices=["humaneval", "custom"], help="Benchmark dataset (default: humaneval)")
+    bench_p.add_argument("--generator", "-g", type=str, default="gpt-4o-mini", help="Fast draft generator model (e.g. gpt-4o-mini, gpt-3.5-turbo, deepseek-v4-flash)")
+    bench_p.add_argument("--curator", "-c", type=str, default="deepseek-v4-flash", help="Curator & Verifier model (e.g. deepseek-v4-flash, deepseek-v4-pro)")
     bench_p.add_argument("--limit", "-n", type=int, default=5, help="Number of benchmark tasks to evaluate (default: 5)")
     bench_p.add_argument("--start", "-s", type=int, default=0, help="Starting index in dataset (default: 0)")
     bench_p.add_argument("--all", "-a", action="store_true", help="Run all 164 official HumanEval problems")
@@ -319,10 +321,15 @@ def main():
 
         elif args.command == "bench":
             from .benchmark import DSparkBenchmarkRunner
-            runner = DSparkBenchmarkRunner()
+            runner = DSparkBenchmarkRunner(
+                generator_model=args.generator,
+                curator_model=args.curator,
+            )
             dataset_title = "Official OpenAI HumanEval (164 tasks)" if args.official == "humaneval" else "Custom Curated Suite"
             print(f"\n\033[1;36m=== ⚡ DSPARK AI BENCHMARK SUITE ===\033[0m")
-            print(f"\033[90mEvaluating Dataset: {dataset_title}\033[0m")
+            print(f"  \033[90mDataset   :\033[0m \033[1m{dataset_title}\033[0m")
+            print(f"  \033[90mGenerator :\033[0m \033[93m{args.generator}\033[0m (Mass Code Generation)")
+            print(f"  \033[90mCurator   :\033[0m \033[92m{args.curator}\033[0m (LLM-as-a-Verifier Audit & Refinement)")
             print("\033[90mRunning Pass@1 evaluation: Baseline vs DSpark Dual-Engine...\033[0m\n")
 
             limit = None if args.all else args.limit

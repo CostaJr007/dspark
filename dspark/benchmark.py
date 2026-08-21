@@ -107,11 +107,19 @@ def load_official_humaneval() -> List[HumanEvalTask]:
 class DSparkBenchmarkRunner:
     """
     Executes automated benchmark evaluation and generates comparative analytics.
+    Supports configurable Generator (e.g. OpenAI gpt-4o-mini) and Curator (e.g. DeepSeek v4-flash).
     """
 
-    def __init__(self, curator: Optional[DeepSeekCurator] = None):
-        self.curator = curator or DeepSeekCurator()
-        self.client = self.curator.client
+    def __init__(
+        self,
+        generator_model: str = "gpt-4o-mini",
+        curator_model: str = "deepseek-v4-flash",
+    ):
+        from .client import create_model_client
+        self.generator_name = generator_model
+        self.curator_name = curator_model
+        self.generator_client = create_model_client(generator_model)
+        self.curator = DeepSeekCurator(model=curator_model)
 
     def _execute_humaneval_in_sandbox(self, code: str, entry_point: str, test_code: str) -> bool:
         """Executes candidate code with the official OpenAI check(entry_point) harness."""
@@ -169,7 +177,7 @@ except Exception as e:
             if progress_callback:
                 progress_callback(f"[{idx}/{len(tasks)}] Evaluating {task_name}...")
 
-            # 1. Baseline Run (Fast Single Model Generation)
+            # 1. Baseline Run (Fast Weak Model Generation, e.g. gpt-4o-mini)
             t0 = time.time()
             prompt = (
                 f"Complete the following Python function following its docstring strictly:\n\n"
@@ -177,7 +185,7 @@ except Exception as e:
                 f"Return only the complete Python code implementing this function."
             )
             try:
-                raw_baseline = self.client.complete(prompt, temperature=0.2)
+                raw_baseline = self.generator_client.complete(prompt, temperature=0.2)
                 m = re.search(r"```(?:python)?\n(.*?)```", raw_baseline, re.DOTALL)
                 baseline_code = m.group(1).strip() if m else raw_baseline.strip()
             except Exception:
@@ -186,7 +194,7 @@ except Exception as e:
             baseline_time = (time.time() - t0) * 1000
             baseline_passed = self._execute_humaneval_in_sandbox(baseline_code, task.entry_point, task.test)
 
-            # 2. DSpark Dual-Engine Run (DeepSeek Verifier Audit & Refinement)
+            # 2. DSpark Dual-Engine Run (DeepSeek Curator Audit & Surgical Refinement)
             t1 = time.time()
             try:
                 audit = self.curator.audit(
@@ -197,15 +205,19 @@ except Exception as e:
                 if audit.is_approved and audit.refined_code is None:
                     dspark_code = baseline_code
                 else:
+                    feedback_items = audit.critical_issues + [
+                        f"Counter-example input `{ce.failing_input}` fails: expected `{ce.expected_behavior}`"
+                        for ce in audit.counter_examples
+                    ]
                     refine = self.curator.refine(
                         code=baseline_code,
                         specification=task.prompt,
-                        feedback="\n".join(audit.critical_issues + [e.case for e in audit.edge_cases]),
+                        feedback="\n".join(feedback_items) if feedback_items else "Ensure 100% boundary safety.",
                         language="python",
                     )
                     dspark_code = refine.refined_code
                 curator_score = audit.score
-                contra_count = len(audit.critical_issues) + len([e for e in audit.edge_cases if not e.handled_properly])
+                contra_count = len(audit.counter_examples) + len(audit.critical_issues)
             except Exception:
                 dspark_code = baseline_code
                 curator_score = 50

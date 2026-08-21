@@ -193,3 +193,87 @@ class GeminiClient:
         except urllib.error.HTTPError as e:
             raw_err = e.read().decode("utf-8", errors="replace")
             raise APIError(e.code, raw_err, raw_err) from e
+
+
+class OpenAIClient:
+    """Client for OpenAI Chat Completions API."""
+
+    DEFAULT_BASE_URL = "https://api.openai.com/v1"
+    DEFAULT_MODEL = "gpt-4o-mini"
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        default_model: Optional[str] = None,
+        timeout: int = 120,
+    ):
+        self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
+        if not self.api_key:
+            raise ValueError("OPENAI_API_KEY must be provided or set in environment variables.")
+        self.base_url = (base_url or os.environ.get("OPENAI_BASE_URL") or self.DEFAULT_BASE_URL).rstrip("/")
+        self.default_model = default_model or os.environ.get("OPENAI_MODEL") or self.DEFAULT_MODEL
+        self.timeout = timeout
+
+    def complete(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+        temperature: float = 0.2,
+        response_format: Optional[Dict[str, str]] = None,
+    ) -> str:
+        url = f"{self.base_url}/chat/completions"
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        payload = {
+            "model": model or self.default_model,
+            "messages": messages,
+            "temperature": temperature,
+        }
+        if response_format:
+            payload["response_format"] = response_format
+
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+                "User-Agent": "DSpark-OpenAI/0.1.0",
+            },
+            method="POST",
+        )
+
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                raw_bytes = resp.read()
+                data_json = json.loads(raw_bytes.decode("utf-8"))
+                choices = data_json.get("choices", [])
+                if not choices:
+                    raise APIError(500, "Empty choices returned by OpenAI API")
+                return choices[0]["message"]["content"]
+        except urllib.error.HTTPError as e:
+            raw_err = e.read().decode("utf-8", errors="replace")
+            raise APIError(e.code, raw_err, raw_err) from e
+
+
+def create_model_client(model_or_provider: str):
+    """
+    Factory function resolving model identifier (e.g. 'gpt-4o-mini', 'deepseek-v4-flash', 'deepseek-v4-pro', 'gemini-2.5-flash').
+    """
+    spec = model_or_provider.lower().strip()
+    if spec.startswith("openai:") or "gpt-" in spec:
+        model_name = spec.split(":", 1)[1] if ":" in spec else spec
+        return OpenAIClient(default_model=model_name)
+    elif spec.startswith("gemini:") or "gemini" in spec:
+        model_name = spec.split(":", 1)[1] if ":" in spec else spec
+        return GeminiClient(default_model=model_name)
+    else:
+        model_name = spec.split(":", 1)[1] if ":" in spec else spec
+        return DeepSeekClient(default_model=model_name)
+

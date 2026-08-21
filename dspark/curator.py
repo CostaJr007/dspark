@@ -27,10 +27,20 @@ class EdgeCase:
 
 
 @dataclass
+class CounterExample:
+    failing_input: str
+    expected_behavior: str
+    actual_behavior: str
+    severity: str = "HIGH"
+
+
+@dataclass
 class AuditResult:
     verdict: CurationVerdict
     score: int
     summary: str
+    criteria_scores: Dict[str, int] = field(default_factory=dict)
+    counter_examples: List[CounterExample] = field(default_factory=list)
     io_contract_analysis: Dict[str, Any] = field(default_factory=dict)
     edge_cases: List[EdgeCase] = field(default_factory=list)
     complexity: Dict[str, Any] = field(default_factory=dict)
@@ -165,12 +175,26 @@ class DeepSeekCurator:
                     )
                 )
 
+        counter_examples = []
+        for ce in data.get("counter_examples", []):
+            if isinstance(ce, dict):
+                counter_examples.append(
+                    CounterExample(
+                        failing_input=str(ce.get("failing_input", "")),
+                        expected_behavior=str(ce.get("expected_behavior", "")),
+                        actual_behavior=str(ce.get("actual_behavior", "")),
+                        severity=str(ce.get("severity", "HIGH")),
+                    )
+                )
+
         refined = data.get("refined_code", "").strip() or None
 
         return AuditResult(
             verdict=verdict,
             score=int(data.get("score", 70)),
             summary=data.get("summary", ""),
+            criteria_scores=data.get("criteria_scores", {}),
+            counter_examples=counter_examples,
             io_contract_analysis=data.get("io_contract_analysis", {}),
             edge_cases=edge_cases,
             complexity=data.get("complexity", {}),
