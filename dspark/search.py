@@ -66,15 +66,19 @@ class WebSearchEngine:
         Perform a web search for documentation, code samples, or error tracebacks.
         Uses DuckDuckGo HTML endpoint with zero external API dependencies.
         """
-        encoded_query = urllib.parse.urlencode({"q": query})
-        url = f"https://html.duckduckgo.com/html/?{encoded_query}"
+        data = urllib.parse.urlencode({"q": query}).encode("utf-8")
+        url = "https://html.duckduckgo.com/html/"
 
         req = urllib.request.Request(
             url,
+            data=data,
             headers={
                 "User-Agent": self.USER_AGENT,
-                "Accept-Language": "en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7",
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
             },
+            method="POST",
         )
 
         results: List[SearchResult] = []
@@ -84,40 +88,58 @@ class WebSearchEngine:
                 content = resp.read().decode("utf-8", errors="replace")
 
             # Extract result blocks
-            blocks = re.findall(r'<div class="result__body">(.*?)</div>\s*</div>', content, re.DOTALL)
-            for block in blocks[:max_results]:
-                # Extract Title and URL
-                title_match = re.search(r'<a class="result__url"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', block, re.DOTALL)
-                snippet_match = re.search(r'<a class="result__snippet"[^>]*>(.*?)</a>', block, re.DOTALL)
-
-                if not title_match:
-                    title_match = re.search(r'<a class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', block, re.DOTALL)
-
-                if title_match:
-                    raw_href = title_match.group(1)
-                    # Extract target URL from uddg redirect
+            matches = re.findall(
+                r'<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*href="([^"]+)"[^>]*>(.*?)</a>',
+                content,
+                re.DOTALL,
+            )
+            if not matches:
+                # Alternative regex for DDG results
+                title_matches = re.findall(
+                    r'<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>(.*?)</a>',
+                    content,
+                    re.DOTALL,
+                )
+                snippets = re.findall(
+                    r'<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>(.*?)</a>',
+                    content,
+                    re.DOTALL,
+                )
+                for i in range(min(len(title_matches), max_results)):
+                    raw_href, raw_title = title_matches[i]
+                    raw_snippet = snippets[i] if i < len(snippets) else ""
+                    
                     parsed = urllib.parse.urlparse(raw_href)
                     qs = urllib.parse.parse_qs(parsed.query)
                     target_url = qs.get("uddg", [raw_href])[0]
 
-                    title = re.sub(r"<[^>]+>", "", title_match.group(2)).strip()
-                    snippet = re.sub(r"<[^>]+>", "", snippet_match.group(1)).strip() if snippet_match else ""
+                    clean_title = re.sub(r"<[^>]+>", "", raw_title).strip()
+                    clean_snippet = re.sub(r"<[^>]+>", "", raw_snippet).strip()
 
                     results.append(
                         SearchResult(
-                            title=html.unescape(title),
+                            title=html.unescape(clean_title),
                             url=target_url,
-                            snippet=html.unescape(snippet),
+                            snippet=html.unescape(clean_snippet),
+                        )
+                    )
+            else:
+                for href, snip in matches[:max_results]:
+                    clean_snippet = re.sub(r"<[^>]+>", "", snip).strip()
+                    results.append(
+                        SearchResult(
+                            title=query,
+                            url=href,
+                            snippet=html.unescape(clean_snippet),
                         )
                     )
 
         except Exception as e:
-            # Fallback mock/safe result if network is restricted
             results.append(
                 SearchResult(
-                    title=f"Web search query for: {query}",
-                    url=f"https://www.google.com/search?{encoded_query}",
-                    snippet=f"Search performed. (Notice: Direct fetch failed with {e})",
+                    title=f"Web search query: {query}",
+                    url=f"https://www.google.com/search?q={urllib.parse.quote_plus(query)}",
+                    snippet=f"Search performed. (Notice: {e})",
                 )
             )
 
