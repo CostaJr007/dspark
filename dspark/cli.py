@@ -28,16 +28,15 @@ from .pipeline import DSparkPipeline
 from .search import WebSearchEngine
 
 
-BANNER = r"""
-  ____  ____                    _    
- |  _ \/ ___| _ __   __ _ _ __ | | __
- | | | \___ \| '_ \ / _` | '__|| |/ /
- | |_| |___) | |_) | (_| | |   |   < 
- |____/|____/| .__/ \__,_|_|   |_|\_\
-             |_|                      
-  ⚡ Dual-LLM Speculative Engine & Autonomous Agent
-  [Grok-Build Runtime + Kimi WebSearch + DeepSeek Verifier]
-"""
+from .ui import (
+    Theme,
+    render_grok_banner,
+    render_prompt_box,
+    render_prompt_bottom,
+    render_help_panel,
+    render_search_results,
+    render_audit_panel,
+)
 
 
 def _read_file_or_string(val: str) -> str:
@@ -49,65 +48,57 @@ def _read_file_or_string(val: str) -> str:
 
 
 def start_interactive_session(working_dir: Optional[str] = None):
-    """Interactive Terminal User Interface (TUI) in the style of Grok Build & Kimi Code."""
+    """Interactive Terminal User Interface (TUI) in the style of Grok Build & Claude Code."""
     agent = DSparkAgent(working_dir=working_dir)
-    print("\033[96m" + BANNER + "\033[0m")
-    print(f"\033[90mWorkspace:\033[0m {agent.working_dir}")
-    print("\033[90mType your coding instruction, or /help for slash commands, /exit to quit.\033[0m\n")
+    render_grok_banner(str(agent.working_dir))
 
     while True:
         try:
-            user_input = input("\033[1;32mDSpark>\033[0m ").strip()
+            prompt_str = render_prompt_box()
+            user_input = input(prompt_str).strip()
+            render_prompt_bottom()
+
             if not user_input:
                 continue
 
             if user_input in ("/exit", "/quit", "exit", "quit"):
-                print("\033[93mExiting DSpark session. Happy coding!\033[0m")
+                print(f"{Theme.YELLOW}Exiting DSpark session. Happy coding!{Theme.RESET}")
                 break
 
             elif user_input in ("/clear", "clear"):
                 os.system("cls" if os.name == "nt" else "clear")
+                render_grok_banner(str(agent.working_dir))
                 continue
 
             elif user_input in ("/help", "help"):
-                print("\n\033[1;34m=== DSpark Interactive Commands ===\033[0m")
-                print("  \033[92m/search <query>\033[0m       - Perform Kimi-style deep web search for docs/errors")
-                print("  \033[92m/fetch <url>\033[0m          - Fetch and convert web page to clean Markdown")
-                print("  \033[92m/files [path]\033[0m         - List files in current workspace")
-                print("  \033[92m/read <file>\033[0m          - Read and view a local file")
-                print("  \033[92m/sh <command>\033[0m         - Run a local shell command (e.g. pytest, git status)")
-                print("  \033[92m/local\033[0m                - Scan and list locally running offline models (Ollama/LM Studio)")
-                print("  \033[92m/audit <file> -s <spec>\033[0m- Audit a file against strict I/O contracts")
-                print("  \033[92m/refine <file> -s <spec>\033[0m- Refine code in-place with DeepSeek")
-                print("  \033[92m/clear\033[0m                - Clear terminal screen")
-                print("  \033[92m/exit\033[0m                 - Exit session\n")
+                render_help_panel()
                 continue
 
             elif user_input in ("/local", "local"):
                 from .client import LocalLLMClient
                 active = LocalLLMClient.detect_active_endpoints()
                 if not active:
-                    print("\n\033[93mNo active local LLM detected. Start Ollama (ollama run qwen2.5-coder:1.5b) or LM Studio.\033[0m\n")
+                    print(f"\n{Theme.YELLOW}[!] No active local LLM detected. Start Ollama (ollama run qwen2.5-coder:1.5b) or LM Studio.{Theme.RESET}\n")
                 else:
-                    print(f"\n\033[92mFound {len(active)} active local server(s):\033[0m")
+                    print(f"\n{Theme.GREEN}[✓] Found {len(active)} active local server(s):{Theme.RESET}")
                     for s in active:
-                        print(f"  * {s['name']} ({s['v1_url']})")
+                        print(f"  * {Theme.BOLD}{s['name']}{Theme.RESET} ({s['v1_url']})")
                         models = LocalLLMClient(base_url=s['v1_url']).list_models()
                         for m in models:
-                            print(f"    - \033[96m{m}\033[0m")
+                            print(f"    - {Theme.CYAN}{m}{Theme.RESET}")
                     print()
                 continue
 
             elif user_input.startswith("/search "):
                 query = user_input[8:].strip()
-                print(f"\033[90mSearching web for: {query}...\033[0m\n")
-                res = agent.search_web(query)
-                print(res)
+                print(f"{Theme.GRAY}Searching web for: {query}...{Theme.RESET}")
+                results = agent.search_engine.search(query, max_results=5)
+                render_search_results(query, results)
                 continue
 
             elif user_input.startswith("/fetch "):
                 url = user_input[7:].strip()
-                print(f"\033[90mFetching content from: {url}...\033[0m\n")
+                print(f"{Theme.GRAY}Fetching content from: {url}...{Theme.RESET}\n")
                 res = agent.fetch_url(url)
                 print(res)
                 continue
@@ -116,9 +107,9 @@ def start_interactive_session(working_dir: Optional[str] = None):
                 parts = user_input.split(maxsplit=1)
                 subpath = parts[1] if len(parts) > 1 else "."
                 files = agent.list_files(subpath)
-                print(f"\nFiles in {subpath} ({len(files)} items):")
+                print(f"\n{Theme.CYAN}Files in {subpath} ({len(files)} items):{Theme.RESET}")
                 for f in files:
-                    print(f"  - {f}")
+                    print(f"  {Theme.GRAY}•{Theme.RESET} {f}")
                 print()
                 continue
 
@@ -126,29 +117,29 @@ def start_interactive_session(working_dir: Optional[str] = None):
                 fpath = user_input[6:].strip()
                 try:
                     content = agent.read_file(fpath)
-                    print(f"\n--- {fpath} ---\n{content}\n")
+                    print(f"\n{Theme.BLUE}─── {fpath} ───{Theme.RESET}\n{content}\n")
                 except Exception as e:
-                    print(f"\033[91mError: {e}\033[0m")
+                    print(f"{Theme.RED}Error: {e}{Theme.RESET}")
                 continue
 
             elif user_input.startswith("/sh "):
                 cmd = user_input[4:].strip()
-                print(f"\033[90mRunning: {cmd}\033[0m")
-                out = agent.run_terminal(cmd)
-                print(out)
+                print(f"{Theme.GRAY}Running: {cmd}{Theme.RESET}")
+                res = agent.run_terminal(cmd)
+                print(res)
                 continue
 
-            # Standard natural language instruction: invoke Metacognitive Agent
-            print("\033[90mExecuting Metacognitive Reasoning Engine...\033[0m\n")
-            output = agent.execute_task(user_input)
-            print(output)
-            print()
+            # Standard Natural Language Task -> Execute Metacognitive Protocol
+            print(f"\n{Theme.CYAN}⚡ Executing Metacognitive Reasoning Engine...{Theme.RESET}\n")
+            response = agent.execute_task(user_input)
+            print(f"{response}\n")
 
-        except (KeyboardInterrupt, EOFError):
-            print("\n\033[93mSession interrupted. Bye!\033[0m")
+        except KeyboardInterrupt:
+            print(f"\n{Theme.YELLOW}Interrupted. Type /exit to quit.{Theme.RESET}")
+        except EOFError:
             break
         except Exception as e:
-            print(f"\033[91mError: {e}\033[0m\n")
+            print(f"\n{Theme.RED}Error: {e}{Theme.RESET}\n")
 
 
 def main():
