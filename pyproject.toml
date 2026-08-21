@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "dspark-ai"
 version = "0.1.0"
-description = "Dual-LLM Speculative Engine: High-Throughput Generation (Gemini) + Deep Reasoning I/O Arbitration (DeepSeek)"
+description = "Optional Python SDK for DSpark. The primary CLI is the Rust binary (cargo install --path .)."
 readme = "README.md"
 authors = [{ name = "Adeilson Costa", email = "costajr007@users.noreply.github.com" }]
 license = { text = "MIT" }
@@ -24,9 +24,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0.0", "black>=22.0.0"]
-
-[project.scripts]
-dspark = "dspark.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/CostaJr007/dspark"

@@ -1,0 +1,4 @@
+# Copy to %USERPROFILE%\.dspark\config.toml
+creator = "gemini-3.7-flash"
+curator = "deepseek-v4-pro"
+research = true

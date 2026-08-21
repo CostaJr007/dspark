@@ -6,9 +6,9 @@ description: Dual-LLM Speculative Arbitration Engine. Uses DeepSeek Reasoner as 
 # DSpark: Dual-LLM Code Curator (Gemini + DeepSeek)
 
 ## Overview
-DSpark combines the high-speed generation and broad repository context of **Gemini** with the deep mathematical and logical reasoning of **DeepSeek**.
+DSpark combines the high-speed generation and broad repository context of **Gemini** with the deep mathematical and logical reasoning of **DeepSeek**. The runtime is a native **Rust** binary.
 
-When you (the agent) are writing or refactoring critical logic, use the DSpark curator to arbitrate contracts, check corner cases, and guarantee 100% production readiness before finalizing.
+When you (the agent) are writing or refactoring critical logic, use the DSpark curator to arbitrate contracts, check corner cases, and guarantee production readiness before finalizing.
 
 ## When to Activate
 - Developing complex algorithmic components (e.g. state machines, concurrency primitives, cryptographic/hashing logic, AST parsers, financial calculations).
@@ -17,31 +17,21 @@ When you (the agent) are writing or refactoring critical logic, use the DSpark c
 
 ## How to Curate Code with DSpark
 
-Run the curator script via terminal command:
+Prefer the Rust CLI:
 
 ```powershell
-python -m dspark.cli audit path/to/file.py --spec "Description of expected behavior, edge cases, and I/O contracts"
+dspark audit path/to/file.py --spec "Description of expected behavior, edge cases, and I/O contracts"
 ```
 
-Or to automatically apply DeepSeek's refined version in-place:
+Apply DeepSeek's refined version in-place:
 
 ```powershell
-python -m dspark.cli refine path/to/file.py --spec "Requirements" --in-place
+dspark refine path/to/file.py --spec "Requirements" --in-place
 ```
 
-## Python API Integration within Subagents
+If the binary is not on PATH, fall back to the helper script:
 
-```python
-from dspark import DeepSeekCurator
-
-curator = DeepSeekCurator()
-verdict = curator.audit(
-    code=generated_code,
-    specification="Requirement details and I/O expectations",
-    language="python"
-)
-
-if not verdict.is_approved:
-    print(f"DeepSeek flagged {len(verdict.critical_issues)} issues. Applying refined code...")
-    final_code = verdict.refined_code
+```powershell
+python skill/dspark/scripts/curate.py path/to/file.py --spec "Requirements"
+python skill/dspark/scripts/curate.py path/to/file.py --spec "Requirements" --refine
 ```
