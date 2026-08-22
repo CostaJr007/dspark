@@ -1,4 +1,4 @@
-name: Build & Release Rust Binaries
+﻿name: Build & Release Rust Binaries
 
 on:
   push:
@@ -16,13 +16,13 @@ jobs:
         include:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            binary_name: dspark-cli.exe
+            binary_name: dspark.exe
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            binary_name: dspark-cli
+            binary_name: dspark
           - os: macos-latest
             target: aarch64-apple-darwin
-            binary_name: dspark-cli
+            binary_name: dspark
 
     steps:
       - name: Checkout code
@@ -34,10 +34,10 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Build Binary
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release -p dspark-core --target ${{ matrix.target }}
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dspark-cli-${{ matrix.target }}
+          name: dspark-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/${{ matrix.binary_name }}

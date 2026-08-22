@@ -1,14 +1,4 @@
-[toolchain]
-# We use the latest stable, but bump it manually.
-# To avoid unnecessary churn and simplify regression detection
-# - bump one point version at a time
-# - wait at least a couple of weeks after the release before bumping
-# After bumping the version, run
-# ```
-# cargo check --all-targets --workspace
-# cargo clippy --all-targets --workspace
-# ```
-channel = "stable-x86_64-pc-windows-gnu"
+﻿[toolchain]
+channel = "stable"
 components = ["rustfmt", "clippy"]
 profile = "default"
-# force CI
