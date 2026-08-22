@@ -1,4 +1,4 @@
-# Rust
+﻿# Rust
 target/
 **/*.rs.bk
 *.pdb
@@ -9,8 +9,8 @@ __pycache__/
 *$py.class
 
 # Distribution / packaging
-dist/
-build/
+/dist/
+/build/
 *.egg-info/
 .eggs/
 
