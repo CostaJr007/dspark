@@ -257,8 +257,16 @@ def main():
     inter_p.add_argument("--curator", "-c", type=str, default="deepseek-v4-flash", help="Active curator & verifier model")
     inter_p.add_argument("--theme", "-t", type=str, default="bloomberg", choices=["bloomberg", "cyan", "matrix"], help="Color theme (default: bloomberg)")
 
-    # Command: mcp
-    subparsers.add_parser("mcp", help="Run DSpark as a Model Context Protocol (MCP) server")
+    # Command: cegar (Dual-Engine formal CEGAR loop)
+    cegar_p = subparsers.add_parser("cegar", help="Run formal CEGAR Dual-Engine verification loop (Creator -> Compiler -> Curator -> Sandbox -> Refiner)")
+    cegar_p.add_argument("spec", type=str, help="Feature specification or algorithm requirements")
+    cegar_p.add_argument("--code", "-c", type=str, default=None, help="Optional initial code draft or file")
+    cegar_p.add_argument("--max-iter", "-m", type=int, default=3, help="Max CEGAR refinement passes (default: 3)")
+    cegar_p.add_argument("--out", "-o", type=str, default=None, help="Output destination file")
+
+    # Command: contracts (AST Design-by-Contract extractor)
+    contracts_p = subparsers.add_parser("contracts", help="Extract formal AST I/O contracts from a source file")
+    contracts_p.add_argument("file", type=str, help="Path to source code file")
 
     # Command: local (Manage & detect local offline models)
     local_p = subparsers.add_parser("local", help="Scan, list and test local offline LLMs (Ollama, LM Studio, vLLM)")
@@ -418,6 +426,43 @@ def main():
                 client = LocalLLMClient(base_url=args.url)
                 res = client.complete("Write a python one-liner to reverse a list.", model=args.test)
                 print(f"\n  \033[92m[✓] Model Response:\033[0m\n{res}\n")
+
+        elif args.command == "contracts":
+            from .compiler.parser import infer_contracts_from_ast
+            source = _read_file_or_string(args.file)
+            contracts = infer_contracts_from_ast(source)
+            print(f"\n=== FORMAL I/O CONTRACTS ({len(contracts)} function(s)) ===")
+            for c in contracts:
+                print(f"\nFunction: \033[1;36m{c.function_name}\033[0m")
+                print(f"  Preconditions:  {c.preconditions or 'None'}")
+                print(f"  Postconditions: {c.postconditions or 'None'}")
+                print(f"  Invariants:     {c.invariants or 'None'}")
+            print()
+
+        elif args.command == "cegar":
+            import asyncio
+            from .pipeline.cegar import CEGARPipeline
+            
+            code_draft = _read_file_or_string(args.code) if args.code else None
+            pipeline = CEGARPipeline(max_iterations=args.max_iter)
+            
+            print(f"\n\033[1;34m=== DSPARK DUAL-ENGINE CEGAR PIPELINE ===\033[0m")
+            print(f"Spec: {args.spec}")
+            print(f"Max Iterations: {args.max_iter}\n")
+            
+            state = asyncio.run(pipeline.execute(user_spec=args.spec, initial_code=code_draft))
+            
+            verdict_color = "\033[92m" if state.verdict.value == "APPROVED" else "\033[91m"
+            print(f"\n=== FINAL VERDICT: {verdict_color}{state.verdict.value}\033[0m ===")
+            print(f"Completed Iterations: {state.iteration}")
+            print(f"Discovered Counterexamples: {len(state.counter_examples)}")
+            
+            if args.out and state.current_draft:
+                with open(args.out, "w", encoding="utf-8") as f:
+                    f.write(state.current_draft)
+                print(f"\nVerified code written to: {args.out}")
+            else:
+                print(f"\n=== VERIFIED CODE ===\n{state.current_draft}")
 
         elif args.command == "mcp":
             run_mcp_server()
