@@ -1,4 +1,4 @@
-﻿# DSpark: Unified Dual-Engine AI Coding Platform
+# DSpark: Unified Dual-Engine AI Coding Platform
 
 [![Rust](https://img.shields.io/badge/rust-2024%20%2F%202021-orange.svg)](https://www.rust-lang.org)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org)
@@ -20,7 +20,7 @@ Academic research has rigorously proven that **LLMs cannot reliably self-correct
 ### 2. Cross-Family Inductive Bias Diversity
 DSpark breaks this echo chamber by pairing two completely distinct model families:
 * **Creator (e.g., Google Gemini / Anthropic Claude):** Optimized for broad repository context, high throughput, and AST manipulation.
-* **Curator (e.g., DeepSeek v4 Pro / DeepSeek-R1):** Optimized for deep chain-of-thought mathematical reasoning and rigorous logical falsification.
+* **Curator (e.g., DeepSeek v4 Pro / DeepSeek v4 Flash / Any LLM):** Optimized for deep chain-of-thought mathematical reasoning and rigorous logical falsification.
 * What lies in the pretraining and attention blind spots of Family A is easily caught by Family B.
 
 ### 3. CEGAR (Counterexample-Guided Abstraction Refinement) & I/O Contracts
