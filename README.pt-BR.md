@@ -11,7 +11,38 @@ Sistemas baseados em um único LLM que geram e revisam o próprio código sofrem
 
 ---
 
-## Arquitetura do Sistema
+## 🔬 Fundamentação Teórica e Científica
+
+### 1. A Falácia da Autocorreção (*Self-Correction Fallacy*)
+Pesquisas acadêmicas demonstraram formalmente que **LLMs não conseguem se autocorrigir de forma confiável no mesmo contexto autoregressivo** (*"Large Language Models Cannot Self-Correct Reasoning Yet"*, Huang et al., 2023; Stechly et al., 2024).
+* Quando o mesmo modelo gera um código e é perguntado *"Tem certeza de que está certo?"*, ele sofre de **viés de confirmação**. O modelo tende a justificar as próprias alucinações e reafirmar premissas errôneas porque a geração e a revisão compartilham o mesmo espaço latente e a mesma distribuição de probabilidade de tokens.
+
+### 2. Diversidade de Famílias e *Priors* Indutivos
+O DSpark quebra essa câmara de eco separando o processo entre duas famílias de modelos independentes:
+* **Criador (ex.: Google Gemini / Anthropic Claude):** Otimizado para contexto amplo de repositório, alta vazão e modificações rápidas de arquivos.
+* **Curador (ex.: DeepSeek v4 Pro / DeepSeek-R1):** Otimizado para raciocínio lógico profundo (*Chain-of-Thought*) e falsificação rigorosa.
+* O que passa despercebido pelos pontos cegos da Família A é imediatamente capturado e confrontado pela Família B.
+
+### 3. Princípio CEGAR e Contratos Formais de I/O
+Em vez de pedir "revisões genéricas", o DSpark adota a metodologia de verificação formal **CEGAR** (*Counterexample-Guided Abstraction Refinement*):
+* O Curador audita o código contra **contratos estritos de Entrada/Saída (I/O)**, invariantes e condições de limite.
+* Se um contrato falhar, o Curador sintetiza um **contra-exemplo concreto** (`counter_examples`) que guia a refatoração determinística do código.
+
+---
+
+## 🌟 Vantagens Práticas para o Desenvolvedor
+
+| Vantagem | Modelo Único Tradicional | DSpark Dual-Engine |
+|---|---|---|
+| **Detecção de Casos de Borda** | ❌ Deixa passar erros sutis de limites e concorrência | ✅ **Detectado deterministicamente** pelo Curador independente |
+| **Fim dos Loops de Alucinação** | ❌ Fica gerando o mesmo erro repetidamente | ✅ **Quebrado na hora** com contra-exemplos concretos |
+| **Economia de Custos e Tokens** | ❌ Usa modelos caros de raciocínio para tarefas simples de IO | ✅ **Criador rápido/barato** + **Curador de raciocínio cirúrgico** |
+| **Autonomia sem Fadiga** | ❌ Exige que o desenvolvedor revise cada linha manualmente | ✅ **Curadoria 100% automática** via hooks MCP em segundo plano |
+| **Independência de Fornecedor** | ❌ Preso ao ecossistema de uma única empresa | ✅ **Universal**: Google, Anthropic, DeepSeek, OpenAI e Modelos Locais |
+
+---
+
+## 🏛️ Arquitetura do Sistema
 
 ```mermaid
 graph TD
@@ -33,7 +64,7 @@ graph TD
 
 ---
 
-## Estrutura do Monorepo Unificado
+## 📦 Estrutura do Monorepo Unificado
 
 ```text
 dspark/
@@ -56,7 +87,7 @@ dspark/
 
 ---
 
-## Componentes Principais
+## 🚀 Componentes Principais
 
 1. **TUI Fullscreen (`dspark-cli`):** Interface de terminal completa com curadoria automática contínua em segundo plano.
 2. **Servidor MCP (`dspark mcp`):** Expõe ferramentas padronizadas (`dspark_audit_code`, `dspark_refine_code`) para Antigravity, Cursor, Claude Code, Windsurf e Roo Code.
@@ -65,7 +96,7 @@ dspark/
 
 ---
 
-## Testes e Validação
+## 🧪 Testes e Validação
 
 ```bash
 # Testes do núcleo Rust

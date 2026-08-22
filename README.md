@@ -11,7 +11,38 @@ Single LLM systems that generate and review their own code suffer from **self-co
 
 ---
 
-## Architecture Overview
+## 🔬 Scientific & Empirical Foundation
+
+### 1. The Self-Correction Fallacy (*Huang et al., 2023*)
+Academic research has rigorously proven that **LLMs cannot reliably self-correct reasoning in the same autoregressive context** (*"Large Language Models Cannot Self-Correct Reasoning Yet"*, Huang et al., 2023; Stechly et al., 2024). 
+* When a model generates code and is subsequently asked *"Are you sure this code is correct?"*, it suffers from **confirmation bias**. It rationalizes its own hallucinations and reaffirms flawed assumptions because both generation and review share the exact same attention context and token probability distribution.
+
+### 2. Cross-Family Inductive Bias Diversity
+DSpark breaks this echo chamber by pairing two completely distinct model families:
+* **Creator (e.g., Google Gemini / Anthropic Claude):** Optimized for broad repository context, high throughput, and AST manipulation.
+* **Curator (e.g., DeepSeek v4 Pro / DeepSeek-R1):** Optimized for deep chain-of-thought mathematical reasoning and rigorous logical falsification.
+* What lies in the pretraining and attention blind spots of Family A is easily caught by Family B.
+
+### 3. CEGAR (Counterexample-Guided Abstraction Refinement) & I/O Contracts
+Rather than asking for vague "code reviews", DSpark adapts formal verification methods:
+* The Curator audits code against strict **Input/Output (I/O) contracts**, invariants, and boundary conditions.
+* If a contract fails, the Curator synthesizes a deterministic **counter-example** (`counter_examples`) which serves as ground-truth feedback for the Refiner engine.
+
+---
+
+## 🌟 Tangible Developer Benefits
+
+| Benefit | Single-Model Setup | DSpark Dual-Engine Setup |
+|---|---|---|
+| **Edge-Case Bug Detection** | ❌ Misses subtle boundary conditions and off-by-one errors | ✅ **Caught deterministically** via cross-family I/O arbitration |
+| **Hallucination Loops** | ❌ Model repeatedly generates similar failing code | ✅ **Broken immediately** by concrete verifier counter-examples |
+| **Token & Cost Efficiency** | ❌ Expensive reasoning models used for simple boilerplates | ✅ **Fast/cheap creator** + **targeted reasoning verifier** |
+| **Verification Autonomy** | ❌ Requires manual user code review and test writing | ✅ **Automated via MCP background hooks** (No human fatigue) |
+| **Vendor Portability** | ❌ Locked to a single AI vendor | ✅ **Universal**: Works across Google, Anthropic, DeepSeek, and Local LLMs |
+
+---
+
+## 🏛️ System Architecture
 
 ```mermaid
 graph TD
@@ -33,7 +64,7 @@ graph TD
 
 ---
 
-## Unified Monorepo Structure
+## 📦 Unified Monorepo Structure
 
 ```text
 dspark/
@@ -56,7 +87,7 @@ dspark/
 
 ---
 
-## Key Modules & Capabilities
+## 🚀 Key Modules & Capabilities
 
 ### 1. Fullscreen Coding TUI (`dspark-cli`)
 A complete, reactive fullscreen terminal UI designed for pairing with autonomous coding agents.
@@ -98,13 +129,14 @@ if __name__ == "__main__":
 
 ---
 
-## Installation & Setup
+## 🛠️ Installation & Setup
 
 ### Prerequisites
 * **Rust**: `rustc 1.80+` (Cargo workspace support)
 * **Python**: `3.10+`
 
 ### Environment Variables
+Configure your model provider keys:
 ```bash
 export GEMINI_API_KEY="your-gemini-key"
 export DEEPSEEK_API_KEY="your-deepseek-key"
@@ -126,7 +158,7 @@ pip install -e .
 
 ---
 
-## Testing & Verification
+## 🧪 Testing & Verification
 
 ```bash
 # Run Rust Core tests
@@ -141,5 +173,5 @@ cargo check -p dspark-core -p xai-grok-tools -p xai-grok-pager-bin
 
 ---
 
-## License
+## 📄 License
 Dual-licensed under MIT and Apache 2.0. See [LICENSE](LICENSE) for details.
