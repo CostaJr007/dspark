@@ -1,4 +1,4 @@
-//! Spec-visible oracle: doctests and helpers from the prompt, never hidden tests.
+﻿//! Spec-visible oracle: doctests and helpers from the prompt, never hidden tests.
 
 use serde::Deserialize;
 use std::fs;
@@ -23,17 +23,25 @@ pub struct OracleFailure {
     pub message: String,
 }
 
-pub fn python_cmd() -> &'static str {
-    if Command::new("python")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-    {
-        "python"
-    } else {
-        "py"
+pub fn python_cmd() -> String {
+    if let Ok(p) = std::env::var("PYTHON") {
+        let trimmed = p.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
     }
+    for candidate in &["python3", "python", "py"] {
+        if Command::new(candidate)
+            .arg("-c")
+            .arg("import sys; sys.exit(0)")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+        {
+            return candidate.to_string();
+        }
+    }
+    "python".to_string()
 }
 
 /// Run prompt-visible checks against candidate Python (doctest + encode/decode roundtrip).
@@ -138,42 +146,64 @@ print(json.dumps(failures))
         }
     };
     let deadline = Instant::now() + Duration::from_secs(10);
-    let stdout = loop {
+    let mut timed_out = false;
+    let mut stdout_buf = Vec::new();
+    let mut stderr_buf = Vec::new();
+
+    loop {
         match child.try_wait() {
             Ok(Some(_)) => {
-                let mut buf = Vec::new();
                 if let Some(mut s) = child.stdout.take() {
-                    let _ = std::io::Read::read_to_end(&mut s, &mut buf);
+                    let _ = std::io::Read::read_to_end(&mut s, &mut stdout_buf);
                 }
-                break String::from_utf8_lossy(&buf).into_owned();
+                if let Some(mut e) = child.stderr.take() {
+                    let _ = std::io::Read::read_to_end(&mut e, &mut stderr_buf);
+                }
+                break;
             }
-            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(40)),
+            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(30)),
             _ => {
+                timed_out = true;
                 let _ = child.kill();
                 let _ = child.wait();
-                break String::new();
+                break;
             }
         }
-    };
+    }
+
     let _ = fs::remove_file(&code_path);
     let _ = fs::remove_file(&spec_path);
     let _ = fs::remove_file(&runner_path);
 
-    if stdout.trim().is_empty() {
+    if timed_out {
         return vec![OracleFailure {
             kind: "timeout".into(),
             input: String::new(),
             expected: String::new(),
             actual: String::new(),
-            message: "spec oracle timed out or produced no output".into(),
+            message: "spec oracle execution timed out".into(),
         }];
     }
+
+    let stdout = String::from_utf8_lossy(&stdout_buf).into_owned();
+    let stderr = String::from_utf8_lossy(&stderr_buf).into_owned();
+
+    if stdout.trim().is_empty() {
+        return vec![OracleFailure {
+            kind: "execution_error".into(),
+            input: String::new(),
+            expected: String::new(),
+            actual: stderr.trim().to_string(),
+            message: "spec oracle produced no stdout output".into(),
+        }];
+    }
+
     serde_json::from_str::<Vec<OracleFailure>>(stdout.trim()).unwrap_or_else(|_| {
         vec![OracleFailure {
             kind: "parse".into(),
             input: String::new(),
             expected: String::new(),
-            actual: String::new(),
+            actual: stderr.trim().to_string(),
             message: stdout.chars().take(200).collect(),
         }]
     })
