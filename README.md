@@ -1,50 +1,75 @@
 # DSpark
 
-Dual-engine coding: a **creator** drafts, a **curator** from a different model family audits I/O contracts. Roles, not vendors.
+DSpark is a **dual-engine** coding system: one model **creates**, another model **curates**.
 
-Default pair:
+A single LLM writing and then “reviewing itself” is confirmation-biased. DSpark splits the job into two **roles** (not vendors):
 
-| Role | Model |
+| Role | Job |
 |---|---|
-| creator | `gpt-4o-mini` |
-| curator | `deepseek-v4-pro` |
+| **Creator** | Drafts the implementation from the spec. Fast / cheap is fine. |
+| **Curator** | Independent **LLM-as-a-Verifier**. Scores I/O contracts (preconditions, postconditions, edge cases), synthesizes counter-examples, and may rewrite the draft. Must be a **different model family** than the creator. |
 
-Pair file: `~/.dspark/pair.toml`. You pick the two models. Curation is the default — you do not ask for it.
+You only choose *which* two models fill those roles. Curation is the default workflow — you do not ask for it.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Rust](https://img.shields.io/badge/rust-stable-orange.svg)](https://www.rust-lang.org/)
+Default pair on this machine / in `~/.dspark/pair.toml`:
 
-[Português](README.pt-BR.md)
+```toml
+creator = "gpt-4o-mini"
+curator = "deepseek-v4-pro"
+```
+
+[Português](README.pt-BR.md) · License: [MIT](LICENSE)
 
 ---
 
-## What to run
+## Two repositories (do not mix them up)
 
-| Command | Use |
-|---|---|
-| **`dspark-cli`** | Daily driver. Fullscreen TUI in a repo. Creator writes; curator runs after each code edit. |
-| **`dspark`** | This crate. Pipeline and library: `run`, `audit`, `refine`, `arbitrate`, REPL, MCP. |
+| Repo | Binary | What it is |
+|---|---|---|
+| **[CostaJr007/dspark-cli](https://github.com/CostaJr007/dspark-cli)** | `dspark-cli` | **Daily driver.** Fullscreen TUI in a real repo. Creator writes files; after each code edit the curator runs automatically and may apply a refine. |
+| **This repo (`dspark`)** | `dspark` | **Engine.** Pipeline CLI, Rust library, and MCP server used by the TUI, by Agy, and by scripts. |
 
-TUI source: [CostaJr007/dspark-app](https://github.com/CostaJr007/dspark-app).
+Work on a project:
 
 ```powershell
 cd your-project
 dspark-cli
 ```
 
-`/pair` only changes which models fill the two roles.
+Ask for the feature. Do not say “curate”. `/pair` only changes the two models.
 
 ---
 
-## This repository (`dspark`)
+## What the engine actually does
 
 ```
-spec
-  → creator draft
-  → curator I/O audit (contracts, doctest oracle — not the author's self-score)
-  → refine if needed
-  → re-audit
+specification (what the code must do)
+        │
+        ▼
+   creator draft          ← GPT / Gemini / local / whoever you set
+        │
+        ▼
+   curator audit          ← DeepSeek (or another family)
+        │                   verdict: APPROVED | NEEDS_REVISION | REJECTED
+        │                   score 0–100, critical issues, counter-examples
+        ▼
+   refine if needed       ← same curator rewrites against the spec + feedback
+        │
+        ▼
+   re-audit               ← do not ship on a self-score
 ```
+
+The curator does **not** trust “tests passed” narration from the creator. It checks:
+
+- **Specification** — stated requirements are implemented
+- **I/O contract** — empty/null, types, documented errors, doctest `>>>` examples, encode/decode roundtrips when both helpers exist
+- **Errors** — no silent swallow of the contract
+
+`APPROVED` with score 100 is forbidden if those examples were not checked.
+
+---
+
+## Install this engine
 
 ```bash
 git clone https://github.com/CostaJr007/dspark.git
@@ -52,29 +77,61 @@ cd dspark
 cargo install --path . --force
 ```
 
-That installs **`dspark` only**. It does not overwrite `dspark-cli`.
+Installs **`dspark` only**. It will not overwrite `dspark-cli`.
 
 ```bash
-dspark pair
-dspark run "Bounded LRU cache in Rust" --lang rust --no-research --out lru.rs
-dspark audit lru.rs --spec "O(1) get/put, bounded capacity" --lang rust
-dspark refine lru.rs --spec "O(1) get/put, bounded capacity" --in-place --lang rust
-```
-
-### Environment
-
-```bash
-export OPENAI_API_KEY="..."      # creator
-export DEEPSEEK_API_KEY="..."    # curator
+export OPENAI_API_KEY="..."       # if the creator is OpenAI-class
+export DEEPSEEK_API_KEY="..."     # curator (required for audit/refine/MCP)
+export GEMINI_API_KEY="..."       # only if the creator is Gemini via this CLI
 export DSPARK_CREATOR="gpt-4o-mini"
 export DSPARK_CURATOR="deepseek-v4-pro"
 ```
 
 Copy [dspark.toml.example](dspark.toml.example) to `~/.dspark/pair.toml`.
 
-Search is live (Tavily if `TAVILY_API_KEY` is set, otherwise DuckDuckGo HTML). Empty results stay empty.
+---
 
-### Library
+## Commands
+
+```bash
+dspark pair                          # print active creator/curator
+dspark run "Bounded LRU in Rust" --lang rust --no-research --out lru.rs
+dspark audit lru.rs --spec "O(1) get/put, bounded capacity" --lang rust
+dspark refine lru.rs --spec "O(1) get/put, bounded capacity" --in-place --lang rust
+dspark arbitrate a.rs b.rs --spec "Lock-free queue"
+dspark search "tokio spawn_blocking vs spawn"
+dspark                       # REPL (metacognitive agent + verify_with_curator)
+```
+
+`dspark run` is the full pipeline (generate → audit → refine → re-audit).  
+`dspark audit` / `refine` are the curator alone, when you already have a file.
+
+---
+
+## MCP (Agy, editors, other agents)
+
+This repo exposes the curator as MCP tools so **Gemini (or any host)** can stay the creator and still call DeepSeek as verifier:
+
+- `dspark_audit_code`
+- `dspark_refine_code`
+- `dspark_arbitrate`
+
+```json
+{
+  "mcpServers": {
+    "dspark": {
+      "command": "dspark",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+On this PC, Agy is already wired that way (`agy mcp list` → `dspark`). Session model = Gemini Flash; curator = `deepseek-v4-pro` from `pair.toml`. Switch to flash with `curator = "deepseek-v4-flash"`.
+
+---
+
+## Library
 
 ```rust
 use dspark::DeepSeekCurator;
@@ -99,21 +156,4 @@ cargo run --example simple_audit
 cargo run --example arbitrate_candidates
 ```
 
-### MCP
-
-```json
-{
-  "mcpServers": {
-    "dspark": {
-      "command": "dspark",
-      "args": ["mcp"],
-      "env": {
-        "OPENAI_API_KEY": "your-key",
-        "DEEPSEEK_API_KEY": "your-key"
-      }
-    }
-  }
-}
-```
-
-Tools: `dspark_audit_code`, `dspark_refine_code`, `dspark_arbitrate`.
+Live search (optional): Tavily if `TAVILY_API_KEY` is set, otherwise DuckDuckGo HTML. Empty results stay empty — no invented hits.
