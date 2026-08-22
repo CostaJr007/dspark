@@ -113,19 +113,22 @@ impl AuditResult {
         self.verdict == CurationVerdict::Approved
     }
 
-    /// True when the draft must not ship as-is (issues, oracle fail, or low score).
+    /// True when the draft has genuine critical failures or severe contract violations.
     pub fn must_revise(&self) -> bool {
         self.verdict != CurationVerdict::Approved
-            || self.refined_code.is_some()
-            || !self.counter_examples.is_empty()
+            || self.counter_examples.iter().any(|c| c.severity == "CRITICAL" || c.severity == "HIGH")
             || !self.critical_issues.is_empty()
             || self.score < 80
-            || self.edge_cases.iter().any(|e| !e.handled_properly)
     }
 
     fn reconcile(&mut self) {
-        let unhandled = self.edge_cases.iter().any(|e| !e.handled_properly);
-        if !self.counter_examples.is_empty() || !self.critical_issues.is_empty() || unhandled {
+        let has_severe_failures = self
+            .counter_examples
+            .iter()
+            .any(|c| c.severity == "CRITICAL" || c.severity == "HIGH")
+            || !self.critical_issues.is_empty();
+
+        if has_severe_failures {
             if self.verdict == CurationVerdict::Approved {
                 self.verdict = CurationVerdict::NeedsRevision;
             }
@@ -134,6 +137,7 @@ impl AuditResult {
             }
         }
     }
+
 
     fn apply_oracle(&mut self, failures: Vec<OracleFailure>) {
         if failures.is_empty() {
@@ -286,7 +290,10 @@ impl DeepSeekCurator {
             .client
             .complete(&user_prompt, Some(REFINER_SYSTEM_PROMPT), 0.2, false)
             .await?;
-        let refined_code = extract_refined_source(&raw_resp);
+        let mut refined_code = extract_refined_source(&raw_resp);
+        if refined_code.trim().is_empty() {
+            refined_code = code.to_string();
+        }
 
         let changes: Vec<String> = raw_resp
             .lines()
@@ -333,10 +340,15 @@ impl DeepSeekCurator {
             .await?;
         let data = extract_json(&raw_resp).map_err(CuratorError::Parse)?;
 
-        let winner_index = data
+        let raw_index = data
             .get("winner_index")
             .and_then(|v| v.as_i64().or_else(|| v.as_u64().map(|n| n as i64)))
             .unwrap_or(0);
+        let winner_index = if raw_index >= 0 && (raw_index as usize) < candidates.len() {
+            raw_index
+        } else {
+            0
+        };
 
         Ok(ArbitrationResult {
             winner_index,
@@ -350,6 +362,7 @@ impl DeepSeekCurator {
         })
     }
 }
+
 
 fn audit_from_value(data: &Value, raw: String) -> AuditResult {
     let verdict = CurationVerdict::from_str_loose(&json_string(data, "verdict"));

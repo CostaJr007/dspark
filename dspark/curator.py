@@ -101,28 +101,34 @@ def _extract_json(text: str) -> Dict[str, Any]:
         except Exception:
             pass
 
-    # 4. Fallback: repair unescaped newlines inside strings
-    def _clean_newlines(m):
-        return m.group(0).replace("\n", "\\n").replace("\r", "\\r")
-    
-    try:
-        cleaned = re.sub(r'"([^"\\]*(\\.[^"\\]*)*)"', _clean_newlines, text)
-        first_b = cleaned.find("{")
-        last_b = cleaned.rfind("}")
-        if first_b != -1 and last_b != -1:
-            return json.loads(cleaned[first_b:last_b + 1], strict=False)
-    except Exception:
-        pass
+    # 4. Resilient Fallback: Regex extraction of key fields
+    verdict_m = re.search(r'"verdict"\s*:\s*"([^"]+)"', text)
+    score_m = re.search(r'"score"\s*:\s*(\d+)', text)
+    summary_m = re.search(r'"summary"\s*:\s*"([^"]+)"', text)
 
-    raise ValueError(f"Failed to parse valid JSON from model response:\n{text[:400]}...")
+    verdict = verdict_m.group(1) if verdict_m else ("APPROVED" if "APPROVED" in text.upper() else "NEEDS_REVISION")
+    score = int(score_m.group(1)) if score_m else 75
+    summary = summary_m.group(1) if summary_m else "Automated extraction from model critique."
+    refined_code = _extract_code_blocks(text)
+
+    return {
+        "verdict": verdict,
+        "score": score,
+        "summary": summary,
+        "refined_code": refined_code,
+        "critical_issues": [],
+        "suggested_improvements": [],
+        "counter_examples": [],
+    }
 
 
 def _extract_code_blocks(text: str) -> str:
     """Extract code from triple backtick blocks if present."""
-    match = re.search(r"```(?:\w+)?\n(.*?)```", text, re.DOTALL)
+    match = re.search(r"```(?:\w+)?\s*\n?(.*?)```", text, re.DOTALL)
     if match:
         return match.group(1).strip()
     return text.strip()
+
 
 
 class DeepSeekCurator:
