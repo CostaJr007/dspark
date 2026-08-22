@@ -1,0 +1,47 @@
+{
+  "default": "gpt-4o-mini",
+  "web_search": "gpt-4o-mini",
+  "image_description": "gpt-4o-mini",
+  "session_summary": "gpt-4o-mini",
+  "models": [
+    {
+      "id": "gpt-4o-mini",
+      "model": "gpt-4o-mini",
+      "model_family": "openai",
+      "name": "GPT-4o mini (creator)",
+      "description": "DSpark creator draft model",
+      "context_window": 128000,
+      "api_backend": "chat_completions",
+      "supports_backend_search": false,
+      "system_prompt_label": "DSpark",
+      "show_model_fingerprint": false,
+      "supports_reasoning_effort": false
+    },
+    {
+      "id": "gemini-3.7-flash",
+      "model": "gemini-2.5-flash",
+      "model_family": "gemini",
+      "name": "Gemini (creator)",
+      "description": "DSpark creator draft model",
+      "context_window": 1048576,
+      "api_backend": "chat_completions",
+      "supports_backend_search": false,
+      "system_prompt_label": "DSpark",
+      "show_model_fingerprint": false,
+      "supports_reasoning_effort": false
+    },
+    {
+      "id": "deepseek-v4-pro",
+      "model": "deepseek-chat",
+      "model_family": "deepseek",
+      "name": "DeepSeek (curator)",
+      "description": "DSpark I/O curator",
+      "context_window": 65536,
+      "api_backend": "chat_completions",
+      "supports_backend_search": false,
+      "system_prompt_label": "DSpark",
+      "show_model_fingerprint": false,
+      "supports_reasoning_effort": false
+    }
+  ]
+}

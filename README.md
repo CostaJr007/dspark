@@ -1,159 +1,145 @@
-# DSpark
+﻿# DSpark: Unified Dual-Engine AI Coding Platform
 
-DSpark is a **dual-engine** coding system: one model **creates**, another model **curates**.
+[![Rust](https://img.shields.io/badge/rust-2024%20%2F%202021-orange.svg)](https://www.rust-lang.org)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org)
+[![MCP](https://img.shields.io/badge/protocol-MCP-purple.svg)](https://modelcontextprotocol.io)
+[![License: MIT / Apache 2.0](https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-green.svg)](LICENSE)
 
-A single LLM writing and then “reviewing itself” is confirmation-biased. DSpark splits the job into two **roles** (not vendors):
+**DSpark** is an enterprise-grade, unified dual-engine AI coding architecture. It bridges high-throughput creative generation (**Creator**) with rigorous, independent formal arbitration and verification (**Curator / LLM-as-a-Verifier**).
 
-| Role | Job |
-|---|---|
-| **Creator** | Drafts the implementation from the spec. Fast / cheap is fine. |
-| **Curator** | Independent **LLM-as-a-Verifier**. Scores I/O contracts (preconditions, postconditions, edge cases), synthesizes counter-examples, and may rewrite the draft. Must be a **different model family** than the creator. |
-
-You only choose *which* two models fill those roles. Curation is the default workflow — you do not ask for it.
-
-Default pair on this machine / in `~/.dspark/pair.toml`:
-
-```toml
-creator = "gpt-4o-mini"
-curator = "deepseek-v4-pro"
-```
-
-[Português](README.pt-BR.md) · License: [MIT](LICENSE)
+Single LLM systems that generate and review their own code suffer from **self-correction bias** (the *Self-Correction Fallacy*). DSpark eliminates this failure mode by assigning generation and verification to independent model families operating across formal Input/Output (I/O) contracts and CEGAR-style counter-example refinement.
 
 ---
 
-## Two repositories (do not mix them up)
+## Architecture Overview
 
-| Repo | Binary | What it is |
-|---|---|---|
-| **[CostaJr007/dspark-cli](https://github.com/CostaJr007/dspark-cli)** | `dspark-cli` | **Daily driver.** Fullscreen TUI in a real repo. Creator writes files; after each code edit the curator runs automatically and may apply a refine. |
-| **This repo (`dspark`)** | `dspark` | **Engine.** Pipeline CLI, Rust library, and MCP server used by the TUI, by Agy, and by scripts. |
-
-Work on a project:
-
-```powershell
-cd your-project
-dspark-cli
+```mermaid
+graph TD
+    User([Developer / IDE / Agent]) -->|Prompt / Spec| Creator[Creator: Gemini 3.7 / Fast LLM]
+    Creator -->|Draft Code & AST| Engine[DSpark Arbitration Engine]
+    Engine -->|Code + I/O Contract| Curator[Curator: DeepSeek v4 Pro / Verifier]
+    Curator -->|Audit / Counter-Examples| Evaluator{Verdict: APPROVED?}
+    Evaluator -->|Yes| Output([Verified Executable Output])
+    Evaluator -->|No: critical_issues| Refiner[DSpark Refiner]
+    Refiner -->|Refined Code| Engine
 ```
 
-Ask for the feature. Do not say “curate”. `/pair` only changes the two models.
+### Dual-Engine Roles
+
+| Role | Primary Engine | Purpose | Operational Objective |
+|---|---|---|---|
+| **Creator** | **Gemini 3.7 Flash** | Drafts implementation, parses large repository contexts, handles AST modifications. | Maximize throughput and contextual breadth. |
+| **Curator** | **DeepSeek v4 Pro** | Independent LLM-as-a-Verifier. Audits preconditions, postconditions, invariants, and edge cases. | Falsify errors, generate counter-examples, and enforce I/O contracts. |
 
 ---
 
-## What the engine actually does
+## Unified Monorepo Structure
 
+```text
+dspark/
+├── crates/
+│   ├── dspark-core/          # Core dual-engine engine, CLI, REPL, and MCP Verifier Server
+│   ├── codegen/              # Fullscreen Coding TUI crates (PTY, worktrees, chat-state, etc.)
+│   │   ├── xai-grok-pager-bin/   # TUI application binary (dspark-cli)
+│   │   ├── xai-codebase-graph/   # Tree-sitter code graph generator
+│   │   ├── xai-fast-worktree/    # CoW git worktree virtualization
+│   │   └── ...                   # Modular subsystem crates
+│   └── common/               # Shared tracing, circuit-breaker, and tool-runtime crates
+├── dspark/                   # Python SDK package (async pipelines, generators, curators)
+├── skills/                   # Antigravity & Agentic skills (dspark-curate, hooks)
+├── examples/                 # Rust & Python examples (arbitration, LeetCode, contracts)
+├── tests/                    # Python and Rust test suites
+├── pyproject.toml            # Python packaging specification
+├── Cargo.toml                # Root Cargo Workspace definition
+└── README.md                 # Technical platform documentation
 ```
-specification (what the code must do)
-        │
-        ▼
-   creator draft          ← GPT / Gemini / local / whoever you set
-        │
-        ▼
-   curator audit          ← DeepSeek (or another family)
-        │                   verdict: APPROVED | NEEDS_REVISION | REJECTED
-        │                   score 0–100, critical issues, counter-examples
-        ▼
-   refine if needed       ← same curator rewrites against the spec + feedback
-        │
-        ▼
-   re-audit               ← do not ship on a self-score
-```
-
-The curator does **not** trust “tests passed” narration from the creator. It checks:
-
-- **Specification** — stated requirements are implemented
-- **I/O contract** — empty/null, types, documented errors, doctest `>>>` examples, encode/decode roundtrips when both helpers exist
-- **Errors** — no silent swallow of the contract
-
-`APPROVED` with score 100 is forbidden if those examples were not checked.
 
 ---
 
-## Install this engine
+## Key Modules & Capabilities
 
+### 1. Fullscreen Coding TUI (`dspark-cli`)
+A complete, reactive fullscreen terminal UI designed for pairing with autonomous coding agents.
+* **Continuous Background Curation**: Every file write triggers automated DeepSeek I/O contract audits.
+* **Fast Worktrees**: Zero-overhead CoW git worktrees for isolated agent execution.
+* **Tree-Sitter Graphs**: In-memory AST and dependency graphs for real-time repository navigation.
+
+### 2. MCP Server (`dspark mcp`)
+Native Model Context Protocol (MCP) server providing verification tools to external IDEs and agents (Antigravity, Cursor, Claude Code, Windsurf, Roo Code):
+* `dspark_audit_code`: Formal audit of full source against prompt specifications and docstrings.
+* `dspark_refine_code`: Automated patch generation based on counter-examples and critical issues.
+
+### 3. Core Engine & CLI (`dspark-core`)
+High-performance Rust CLI providing standalone utilities:
+* `dspark audit <file> --spec <spec>`: Standalone code verification.
+* `dspark pair`: Configure and test creator/curator model pairs.
+* `dspark repl`: Interactive dual-engine coding environment.
+
+### 4. Python SDK (`dspark`)
+Full Python package providing programmatic access to the dual-engine pipeline:
+```python
+import asyncio
+from dspark import DSparkPipeline
+
+async def main():
+    pipeline = DSparkPipeline(
+        creator_model="gemini-2.5-flash",
+        curator_model="deepseek-v4-pro"
+    )
+    result = await pipeline.run(
+        prompt="Implement an LRU Cache in Python with O(1) ops.",
+        spec="Must pass concurrency tests and boundary conditions."
+    )
+    print(result.verified_code)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+---
+
+## Installation & Setup
+
+### Prerequisites
+* **Rust**: `rustc 1.80+` (Cargo workspace support)
+* **Python**: `3.10+`
+
+### Environment Variables
 ```bash
-git clone https://github.com/CostaJr007/dspark.git
-cd dspark
-cargo install --path . --force
-```
-
-Installs **`dspark` only**. It will not overwrite `dspark-cli`.
-
-```bash
-export OPENAI_API_KEY="..."       # if the creator is OpenAI-class
-export DEEPSEEK_API_KEY="..."     # curator (required for audit/refine/MCP)
-export GEMINI_API_KEY="..."       # only if the creator is Gemini via this CLI
-export DSPARK_CREATOR="gpt-4o-mini"
+export GEMINI_API_KEY="your-gemini-key"
+export DEEPSEEK_API_KEY="your-deepseek-key"
 export DSPARK_CURATOR="deepseek-v4-pro"
 ```
 
-Copy [dspark.toml.example](dspark.toml.example) to `~/.dspark/pair.toml`.
+### Build from Source
+```bash
+# Clone repository
+git clone https://github.com/CostaJr007/dspark.git
+cd dspark
+
+# Build Rust Core & TUI
+cargo build --release
+
+# Install Python SDK in editable mode
+pip install -e .
+```
 
 ---
 
-## Commands
+## Testing & Verification
 
 ```bash
-dspark pair                          # print active creator/curator
-dspark run "Bounded LRU in Rust" --lang rust --no-research --out lru.rs
-dspark audit lru.rs --spec "O(1) get/put, bounded capacity" --lang rust
-dspark refine lru.rs --spec "O(1) get/put, bounded capacity" --in-place --lang rust
-dspark arbitrate a.rs b.rs --spec "Lock-free queue"
-dspark search "tokio spawn_blocking vs spawn"
-dspark                       # REPL (metacognitive agent + verify_with_curator)
-```
+# Run Rust Core tests
+cargo test -p dspark-core
 
-`dspark run` is the full pipeline (generate → audit → refine → re-audit).  
-`dspark audit` / `refine` are the curator alone, when you already have a file.
+# Run Python SDK tests
+python -m unittest discover tests
+
+# Check workspace crates
+cargo check -p dspark-core -p xai-grok-tools -p xai-grok-pager-bin
+```
 
 ---
 
-## MCP (Agy, editors, other agents)
-
-This repo exposes the curator as MCP tools so **Gemini (or any host)** can stay the creator and still call DeepSeek as verifier:
-
-- `dspark_audit_code`
-- `dspark_refine_code`
-- `dspark_arbitrate`
-
-```json
-{
-  "mcpServers": {
-    "dspark": {
-      "command": "dspark",
-      "args": ["mcp"]
-    }
-  }
-}
-```
-
-On this PC, Agy is already wired that way (`agy mcp list` → `dspark`). Session model = Gemini Flash; curator = `deepseek-v4-pro` from `pair.toml`. Switch to flash with `curator = "deepseek-v4-flash"`.
-
----
-
-## Library
-
-```rust
-use dspark::DeepSeekCurator;
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let curator = DeepSeekCurator::new()?;
-    let verdict = curator
-        .audit(
-            "fn divide_chunks(l: &[u8], n: usize) {}",
-            "Chunk a list into batches of size n. Handle n == 0 safely.",
-            Some("rust"),
-        )
-        .await?;
-    println!("{} {}/100", verdict.verdict, verdict.score);
-    Ok(())
-}
-```
-
-```bash
-cargo run --example simple_audit
-cargo run --example arbitrate_candidates
-```
-
-Live search (optional): Tavily if `TAVILY_API_KEY` is set, otherwise DuckDuckGo HTML. Empty results stay empty — no invented hits.
+## License
+Dual-licensed under MIT and Apache 2.0. See [LICENSE](LICENSE) for details.
