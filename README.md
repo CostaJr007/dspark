@@ -21,11 +21,10 @@ Config lives in `~/.dspark/pair.toml`. This project does not replace or modify `
 
 | Binary | What it is |
 |---|---|
-| `dspark-cli` | Fullscreen TUI (Grok Build rebrand, Apache-2.0). Installed separately. Dual-engine is the default workflow (`/pair`, tool `dspark_curate`). |
-| `dspark` | This crate: pipeline CLI (`run`, `audit`, `refine`, `arbitrate`, REPL). |
-| `dspark-bench` | Optional HumanEval / HumanEval+ runner. |
+| `dspark-cli` | Fullscreen TUI. Dual-engine is the default workflow (`/pair`, tool `dspark_curate`). |
+| `dspark` | This crate: orchestration CLI (`run`, `audit`, `refine`, `arbitrate`, REPL). |
 
-`cargo install --path .` from **this** repo installs `dspark` and `dspark-bench` only. It will **not** overwrite `dspark-cli`.
+`cargo install --path .` from **this** repo installs `dspark` only. It will **not** overwrite `dspark-cli`.
 
 ---
 

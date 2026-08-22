@@ -1,4 +1,4 @@
-//! List-price cost model for the dual-engine thesis (USD / 1M tokens).
+//! Token usage counters from provider responses.
 
 use serde::{Deserialize, Serialize};
 
@@ -17,64 +17,6 @@ impl TokenUsage {
     pub fn total(self) -> u64 {
         self.prompt_tokens + self.completion_tokens
     }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct ModelPrice {
-    pub input_per_mtok: f64,
-    pub output_per_mtok: f64,
-}
-
-/// Cache-miss list prices, USD per 1M tokens (as of 2026-08).
-pub fn price_for(model: &str) -> ModelPrice {
-    let m = model.to_lowercase();
-    if m.contains("gpt-4o-mini") {
-        ModelPrice {
-            input_per_mtok: 0.15,
-            output_per_mtok: 0.60,
-        }
-    } else if m.contains("gpt-4o") || m.contains("gpt-4.1") {
-        ModelPrice {
-            input_per_mtok: 2.50,
-            output_per_mtok: 10.00,
-        }
-    } else if m.contains("deepseek-v4-flash") {
-        ModelPrice {
-            input_per_mtok: 0.14,
-            output_per_mtok: 0.28,
-        }
-    } else if m.contains("deepseek-v4-pro") || m.contains("deepseek-chat") {
-        ModelPrice {
-            input_per_mtok: 0.435,
-            output_per_mtok: 0.87,
-        }
-    } else if m.contains("gemini") && m.contains("flash") {
-        ModelPrice {
-            input_per_mtok: 0.15,
-            output_per_mtok: 0.60,
-        }
-    } else if m.contains("claude") && m.contains("haiku") {
-        ModelPrice {
-            input_per_mtok: 0.25,
-            output_per_mtok: 1.25,
-        }
-    } else if m.starts_with("local:") || m.starts_with("ollama:") || m.starts_with("lmstudio:") {
-        ModelPrice {
-            input_per_mtok: 0.0,
-            output_per_mtok: 0.0,
-        }
-    } else {
-        ModelPrice {
-            input_per_mtok: 1.0,
-            output_per_mtok: 3.0,
-        }
-    }
-}
-
-pub fn usd_for(model: &str, usage: TokenUsage) -> f64 {
-    let p = price_for(model);
-    (usage.prompt_tokens as f64 / 1_000_000.0) * p.input_per_mtok
-        + (usage.completion_tokens as f64 / 1_000_000.0) * p.output_per_mtok
 }
 
 pub fn extract_usage(value: &serde_json::Value) -> TokenUsage {
@@ -96,11 +38,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn mini_costs_less_than_flagship() {
-        let usage = TokenUsage {
-            prompt_tokens: 1_000_000,
-            completion_tokens: 1_000_000,
-        };
-        assert!(usd_for("gpt-4o-mini", usage) < usd_for("gpt-4o", usage));
+    fn parses_usage_tokens() {
+        let v = serde_json::json!({"usage": {"prompt_tokens": 10, "completion_tokens": 20}});
+        let u = extract_usage(&v);
+        assert_eq!(u.prompt_tokens, 10);
+        assert_eq!(u.completion_tokens, 20);
+        assert_eq!(u.total(), 30);
     }
 }

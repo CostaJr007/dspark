@@ -21,11 +21,10 @@ Configuração em `~/.dspark/pair.toml`. Este projeto não substitui nem altera 
 
 | Binário | O que é |
 |---|---|
-| `dspark-cli` | TUI tela cheia (rebrand do Grok Build, Apache-2.0). Instalado à parte. Dual-engine é o fluxo padrão (`/pair`, ferramenta `dspark_curate`). |
-| `dspark` | Este crate: CLI do pipeline (`run`, `audit`, `refine`, `arbitrate`, REPL). |
-| `dspark-bench` | Runner opcional de HumanEval / HumanEval+. |
+| `dspark-cli` | TUI tela cheia. Dual-engine é o fluxo padrão (`/pair`, ferramenta `dspark_curate`). |
+| `dspark` | Este crate: CLI de orquestração (`run`, `audit`, `refine`, `arbitrate`, REPL). |
 
-`cargo install --path .` **deste** repo instala só `dspark` e `dspark-bench`. **Não** sobrescreve o `dspark-cli`.
+`cargo install --path .` **deste** repo instala só `dspark`. **Não** sobrescreve o `dspark-cli`.
 
 ---
 

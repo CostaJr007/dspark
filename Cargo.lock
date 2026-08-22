@@ -272,7 +272,6 @@ dependencies = [
  "clap",
  "colored",
  "dirs",
- "flate2",
  "regex",
  "reqwest",
  "serde",

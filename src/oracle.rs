@@ -87,7 +87,7 @@ for name, obj in list(ns.items()):
         if nfail:
             failures.append({{"kind":"doctest","input":name,"expected":"docstring examples","actual":"failed","message":"%s docstring examples failed" % name}})
 
-# Spec-visible encode/decode roundtrip (HumanEval/38 style).
+# Spec-visible encode/decode roundtrip when both helpers appear in the prompt.
 enc = next((v for k,v in ns.items() if k.startswith("encode_") and callable(v)), None)
 dec = next((v for k,v in ns.items() if k.startswith("decode_") and callable(v)), None)
 if enc and dec:

@@ -20,7 +20,6 @@ if hasattr(sys.stdout, "reconfigure"):
         pass
 
 from .agent import DSparkAgent
-from .benchmark import DSparkBenchmarkRunner
 from .client import DeepSeekClient, create_model_client, LocalLLMClient
 from .curator import DeepSeekCurator
 from .mcp_server import run_mcp_server
@@ -252,16 +251,6 @@ def main():
     run_p.add_argument("--lang", "-l", type=str, default=None, help="Programming language")
     run_p.add_argument("--out", "-o", type=str, default=None, help="Output destination file")
 
-    # Command: bench
-    bench_p = subparsers.add_parser("bench", help="Run automated Pass@1 benchmark (Official OpenAI HumanEval & Edge-Case Suite)")
-    bench_p.add_argument("--official", "-o", type=str, default="humaneval", choices=["humaneval", "custom"], help="Benchmark dataset (default: humaneval)")
-    bench_p.add_argument("--generator", "-g", type=str, default="gpt-4o-mini", help="Fast draft generator model (e.g. gpt-4o-mini, gpt-3.5-turbo, deepseek-v4-flash)")
-    bench_p.add_argument("--curator", "-c", type=str, default="deepseek-v4-flash", help="Curator & Verifier model (e.g. deepseek-v4-flash, deepseek-v4-pro)")
-    bench_p.add_argument("--limit", "-n", type=int, default=5, help="Number of benchmark tasks to evaluate (default: 5)")
-    bench_p.add_argument("--start", "-s", type=int, default=0, help="Starting index in dataset (default: 0)")
-    bench_p.add_argument("--all", "-a", action="store_true", help="Run all 164 official HumanEval problems")
-    bench_p.add_argument("--json", "-j", action="store_true", help="Output raw JSON benchmark report")
-
     # Command: interactive / repl
     inter_p = subparsers.add_parser("interactive", help="Start interactive terminal coding session")
     inter_p.add_argument("--generator", "-g", type=str, default="gpt-4o-mini", help="Active draft generator model")
@@ -399,48 +388,6 @@ def main():
             else:
                 print("Final Verified Code:")
                 print(res.final_code)
-
-        elif args.command == "bench":
-            runner = DSparkBenchmarkRunner(
-                generator_model=args.generator,
-                curator_model=args.curator,
-            )
-            dataset_title = "Official OpenAI HumanEval (164 tasks)" if args.official == "humaneval" else "Custom Curated Suite"
-            print(f"\n\033[1;36m=== ⚡ DSPARK AI BENCHMARK SUITE ===\033[0m")
-            print(f"  \033[90mDataset   :\033[0m \033[1m{dataset_title}\033[0m")
-            print(f"  \033[90mGenerator :\033[0m \033[93m{args.generator}\033[0m (Mass Code Generation)")
-            print(f"  \033[90mCurator   :\033[0m \033[92m{args.curator}\033[0m (LLM-as-a-Verifier Audit & Refinement)")
-            print("\033[90mRunning Pass@1 evaluation: Baseline vs DSpark Dual-Engine...\033[0m\n")
-
-            limit = None if args.all else args.limit
-            if args.official == "humaneval":
-                report = runner.run_official_humaneval_benchmark(
-                    limit=limit,
-                    start_idx=args.start,
-                    progress_callback=lambda msg: print(f"  \033[90m➜\033[0m {msg}"),
-                )
-            else:
-                report = runner.run_benchmark(progress_callback=lambda msg: print(f"  \033[90m➜\033[0m {msg}"))
-
-            if args.json:
-                import json
-                print(json.dumps(report.__dict__, default=lambda o: o.__dict__, indent=2))
-            else:
-                print(f"\n\033[1;34m=== 📊 BENCHMARK RESULTS ({report.dataset_name}) ===\033[0m\n")
-                print(f"  Total Problems Evaluated : \033[1m{report.total_problems}\033[0m")
-                print(f"  Baseline Pass@1 Rate     : \033[91m{report.baseline_pass_rate:.1f}%\033[0m ({report.baseline_passed_count}/{report.total_problems})")
-                print(f"  DSpark Dual-Engine Rate  : \033[92m{report.dspark_pass_rate:.1f}%\033[0m ({report.dspark_passed_count}/{report.total_problems})")
-                
-                delta_color = "\033[92m" if report.accuracy_delta >= 0 else "\033[91m"
-                print(f"  Empirical Accuracy Gain  : {delta_color}+{report.accuracy_delta:.1f}%\033[0m\n")
-
-                print("  Detailed Task Breakdown:")
-                for r in report.results:
-                    base_status = "\033[92mPASS\033[0m" if r.baseline_passed else "\033[91mFAIL\033[0m"
-                    dspark_status = "\033[92mPASS\033[0m" if r.dspark_passed else "\033[91mFAIL\033[0m"
-                    print(f"    * [{r.problem_id}] {r.title}")
-                    print(f"      - Baseline: {base_status} ({r.baseline_time_ms:.0f}ms) | DSpark Dual: {dspark_status} (Score: {r.curator_score}/100, Contraexamples: {r.contra_examples_detected})")
-                print()
 
         elif args.command == "local":
             print("\n\033[1;36m=== 💻 DSPARK LOCAL & OFFLINE LLM SCANNER ===\033[0m\n")

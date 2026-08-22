@@ -2,7 +2,6 @@
 
 pub mod agent;
 pub mod agent_loop;
-pub mod benchmark;
 pub mod client;
 pub mod cost;
 pub mod curator;

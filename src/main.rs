@@ -2,7 +2,6 @@
 
 use clap::{Parser, Subcommand};
 use colored::*;
-use dspark::benchmark::DSparkBenchmarkRunner;
 use dspark::client::{DeepSeekClient, LocalLLMClient, ModelClient};
 use dspark::curator::DeepSeekCurator;
 use dspark::mcp::run_mcp_server;
@@ -98,21 +97,6 @@ enum Commands {
         /// Skip live web research before generating
         #[arg(long = "no-research")]
         no_research: bool,
-    },
-    /// Run HumanEval Pass@1 benchmark (baseline vs DSpark dual-engine)
-    Bench {
-        #[arg(short, long, default_value = "gpt-4o-mini")]
-        generator: String,
-        #[arg(short, long, default_value = "deepseek-v4-pro")]
-        curator: String,
-        #[arg(short = 'n', long, default_value_t = 5)]
-        limit: usize,
-        #[arg(short, long, default_value_t = 0)]
-        start: usize,
-        #[arg(short, long)]
-        all: bool,
-        #[arg(short, long)]
-        json: bool,
     },
     /// Scan, list and test local offline LLMs (Ollama, LM Studio, vLLM)
     Local {
@@ -375,90 +359,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 println!("Final Verified Code:");
                 println!("{}", res.final_code);
-            }
-        }
-        Some(Commands::Bench {
-            generator,
-            curator,
-            limit,
-            start,
-            all,
-            json,
-        }) => {
-            let runner = DSparkBenchmarkRunner::new(&generator, &curator)?;
-            println!("\n{}", "=== ⚡ DSPARK AI BENCHMARK SUITE ===".cyan().bold());
-            println!("  Dataset   : Official OpenAI HumanEval (164 tasks)");
-            println!("  Generator : {} (Mass Code Generation)", generator.yellow());
-            println!(
-                "  Curator   : {} (LLM-as-a-Verifier Audit & Refinement)",
-                curator.green()
-            );
-            println!(
-                "{}",
-                "Running Pass@1 evaluation: Baseline vs DSpark Dual-Engine...\n".dimmed()
-            );
-            let report = runner
-                .run_official_humaneval_benchmark(
-                    if all { None } else { Some(limit) },
-                    start,
-                    |msg| println!("  {} {}", "➜".dimmed(), msg),
-                )
-                .await?;
-            if json {
-                println!("{}", serde_json::to_string_pretty(&report)?);
-            } else {
-                println!(
-                    "\n{}",
-                    format!("=== 📊 BENCHMARK RESULTS ({}) ===\n", report.dataset_name)
-                        .blue()
-                        .bold()
-                );
-                println!("  Generator                : {}", report.generator_model);
-                println!("  Curator                  : {}", report.curator_model);
-                println!("  Total Problems Evaluated : {}", report.total_problems);
-                println!(
-                    "  Baseline Pass@1 Rate     : {} ({}/{})",
-                    format!("{:.1}%", report.baseline_pass_rate).red(),
-                    report.baseline_passed_count,
-                    report.total_problems
-                );
-                println!(
-                    "  DSpark Dual-Engine Rate  : {} ({}/{})",
-                    format!("{:.1}%", report.dspark_pass_rate).green(),
-                    report.dspark_passed_count,
-                    report.total_problems
-                );
-                println!(
-                    "  Empirical Accuracy Gain  : {}",
-                    format!("{:+.1}%", report.accuracy_delta).green()
-                );
-                println!(
-                    "  Rescued (fail→pass)      : {}  |  Regressed (pass→fail): {}\n",
-                    report.rescued_count, report.regress_count
-                );
-                println!("  Detailed Task Breakdown:");
-                for r in &report.results {
-                    let base_status = if r.baseline_passed {
-                        "PASS".green().to_string()
-                    } else {
-                        "FAIL".red().to_string()
-                    };
-                    let dspark_status = if r.dspark_passed {
-                        "PASS".green().to_string()
-                    } else {
-                        "FAIL".red().to_string()
-                    };
-                    println!("    * [{}] {}", r.problem_id, r.title);
-                    println!(
-                        "      - Baseline: {} ({:.0}ms) | DSpark Dual: {} (Score: {}/100, Contraexamples: {})",
-                        base_status,
-                        r.baseline_time_ms,
-                        dspark_status,
-                        r.curator_score,
-                        r.contra_examples_detected
-                    );
-                }
-                println!();
             }
         }
         Some(Commands::Local { url, test }) => {
