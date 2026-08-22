@@ -1,22 +1,23 @@
 @echo off
-title DSpark CLI
+title DSpark
 cd /d %~dp0
 
-where dspark-cli >nul 2>&1
+where dspark >nul 2>&1
 if %ERRORLEVEL%==0 (
-  dspark-cli %*
+  dspark %*
   goto :eof
 )
 
-if exist "%~dp0target\release\dspark-cli.exe" (
-  "%~dp0target\release\dspark-cli.exe" %*
+if exist "%~dp0target\release\dspark.exe" (
+  "%~dp0target\release\dspark.exe" %*
   goto :eof
 )
 
-if exist "%~dp0target\debug\dspark-cli.exe" (
-  "%~dp0target\debug\dspark-cli.exe" %*
+if exist "%~dp0target\debug\dspark.exe" (
+  "%~dp0target\debug\dspark.exe" %*
   goto :eof
 )
 
-echo DSpark CLI not found. Install with: cargo install --path .
+echo DSpark engine not found. Install with: cargo install --path .
+echo (This does not install the TUI; that binary is dspark-cli.)
 exit /b 1

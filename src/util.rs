@@ -31,17 +31,17 @@ pub fn extract_json(text: &str) -> Result<Value, String> {
         return Ok(value);
     }
 
-    if let Some(caps) = md_json_re().captures(text) {
-        if let Ok(value) = serde_json::from_str::<Value>(&caps[1]) {
-            return Ok(value);
-        }
-    }
-
     if let (Some(first), Some(last)) = (text.find('{'), text.rfind('}')) {
         if last > first {
             if let Ok(value) = serde_json::from_str::<Value>(&text[first..=last]) {
                 return Ok(value);
             }
+        }
+    }
+
+    if let Some(caps) = md_json_re().captures(text) {
+        if let Ok(value) = serde_json::from_str::<Value>(&caps[1]) {
+            return Ok(value);
         }
     }
 
@@ -51,12 +51,17 @@ pub fn extract_json(text: &str) -> Result<Value, String> {
     ))
 }
 
-/// Extract the first fenced code block, or return the trimmed text.
+/// Extract the last fenced code block (final answer), or return the trimmed text.
 pub fn extract_code_blocks(text: &str) -> String {
-    if let Some(caps) = code_block_re().captures(text) {
-        return caps[1].trim().to_string();
+    let stripped = think_re().replace_all(text, "");
+    let mut last = None;
+    for caps in code_block_re().captures_iter(&stripped) {
+        let block = caps[1].trim();
+        if !block.is_empty() {
+            last = Some(block.to_string());
+        }
     }
-    text.trim().to_string()
+    last.unwrap_or_else(|| stripped.trim().to_string())
 }
 
 /// If `val` is an existing file, read it; otherwise treat it as a literal string.
@@ -82,11 +87,13 @@ pub fn json_u32(value: &Value, key: &str, default: u32) -> u32 {
 }
 
 pub fn json_string(value: &Value, key: &str) -> String {
-    value
-        .get(key)
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string()
+    match value.get(key) {
+        Some(Value::String(s)) => s.clone(),
+        Some(Value::Number(n)) => n.to_string(),
+        Some(Value::Bool(b)) => b.to_string(),
+        Some(Value::Null) | None => String::new(),
+        Some(other) => other.to_string(),
+    }
 }
 
 pub fn json_string_vec(value: &Value, key: &str) -> Vec<String> {
@@ -95,7 +102,17 @@ pub fn json_string_vec(value: &Value, key: &str) -> Vec<String> {
         .and_then(|v| v.as_array())
         .map(|arr| {
             arr.iter()
-                .filter_map(|item| item.as_str().map(|s| s.to_string()))
+                .filter_map(|item| {
+                    if let Some(s) = item.as_str() {
+                        return Some(s.to_string());
+                    }
+                    item.get("issue")
+                        .or_else(|| item.get("message"))
+                        .or_else(|| item.get("text"))
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                })
+                .filter(|s| !s.is_empty())
                 .collect()
         })
         .unwrap_or_default()

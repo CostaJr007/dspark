@@ -1,11 +1,35 @@
 //! Multi-provider LLM clients (DeepSeek, OpenAI, Gemini, local Ollama/LM Studio).
 
-use serde::{Deserialize, Serialize};
+use crate::cost::{extract_usage, TokenUsage};
+use serde::Serialize;
 use std::env;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
+
+#[derive(Default)]
+pub struct UsageCounters {
+    prompt: AtomicU64,
+    completion: AtomicU64,
+}
+
+impl UsageCounters {
+    pub fn add(&self, u: TokenUsage) {
+        self.prompt.fetch_add(u.prompt_tokens, Ordering::Relaxed);
+        self.completion
+            .fetch_add(u.completion_tokens, Ordering::Relaxed);
+    }
+
+    pub fn snapshot(&self) -> TokenUsage {
+        TokenUsage {
+            prompt_tokens: self.prompt.load(Ordering::Relaxed),
+            completion_tokens: self.completion.load(Ordering::Relaxed),
+        }
+    }
+}
 
 #[derive(Error, Debug)]
 pub enum ClientError {
@@ -34,22 +58,10 @@ struct ChatCompletionRequest {
     response_format: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     stream: Option<bool>,
-}
-
-#[derive(Deserialize)]
-struct ChatCompletionChoice {
-    message: ChatMessageResponse,
-}
-
-#[derive(Deserialize)]
-struct ChatMessageResponse {
-    content: Option<String>,
-    reasoning_content: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct ChatCompletionResponse {
-    choices: Vec<ChatCompletionChoice>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thinking: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u32>,
 }
 
 fn http_client(ua: &str, secs: u64) -> Result<reqwest::Client, ClientError> {
@@ -59,18 +71,135 @@ fn http_client(ua: &str, secs: u64) -> Result<reqwest::Client, ClientError> {
         .build()?)
 }
 
-fn first_choice_text(body: ChatCompletionResponse) -> String {
-    if let Some(choice) = body.choices.into_iter().next() {
-        if let Some(content) = choice.message.content {
-            if !content.is_empty() {
-                return content;
-            }
-        }
-        if let Some(reasoning) = choice.message.reasoning_content {
-            return reasoning;
+fn value_as_text(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::Null => String::new(),
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Array(parts) => parts
+            .iter()
+            .map(|p| {
+                if let Some(s) = p.as_str() {
+                    return s.to_string();
+                }
+                p.get("text")
+                    .and_then(|t| t.as_str())
+                    .or_else(|| p.get("content").and_then(|t| t.as_str()))
+                    .unwrap_or("")
+                    .to_string()
+            })
+            .collect::<Vec<_>>()
+            .join(""),
+        other => other.to_string(),
+    }
+}
+
+fn message_text(msg: &serde_json::Value) -> String {
+    let content = msg
+        .get("content")
+        .map(value_as_text)
+        .unwrap_or_default();
+    if !content.trim().is_empty() {
+        return content;
+    }
+    for key in ["reasoning_content", "reasoning", "output_text"] {
+        let text = msg.get(key).map(value_as_text).unwrap_or_default();
+        if !text.trim().is_empty() {
+            return text;
         }
     }
     String::new()
+}
+
+/// Parse a chat.completion JSON body or an accidental SSE stream into assistant text.
+pub fn parse_chat_completion_text(raw: &str) -> Result<String, ClientError> {
+    Ok(parse_chat_completion(raw)?.0)
+}
+
+fn parse_chat_completion(raw: &str) -> Result<(String, TokenUsage), ClientError> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(ClientError::ApiError {
+            status: 200,
+            message: "empty chat completion body".into(),
+        });
+    }
+
+    if trimmed.starts_with("data:") || trimmed.contains("\ndata:") {
+        let mut content = String::new();
+        let mut reasoning = String::new();
+        let mut usage = TokenUsage::default();
+        for line in raw.lines() {
+            let line = line.trim();
+            let Some(payload) = line.strip_prefix("data:") else {
+                continue;
+            };
+            let payload = payload.trim();
+            if payload.is_empty() || payload == "[DONE]" {
+                continue;
+            }
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(payload) else {
+                continue;
+            };
+            let chunk_usage = extract_usage(&v);
+            if chunk_usage.total() > 0 {
+                usage = chunk_usage;
+            }
+            if let Some(delta) = v.pointer("/choices/0/delta") {
+                content.push_str(&delta.get("content").map(value_as_text).unwrap_or_default());
+                reasoning.push_str(
+                    &delta
+                        .get("reasoning_content")
+                        .map(value_as_text)
+                        .unwrap_or_default(),
+                );
+            }
+            if let Some(msg) = v.pointer("/choices/0/message") {
+                let t = message_text(msg);
+                if !t.trim().is_empty() {
+                    content = t;
+                }
+            }
+        }
+        let text = if !content.trim().is_empty() {
+            content
+        } else {
+            reasoning
+        };
+        if text.trim().is_empty() {
+            return Err(ClientError::ApiError {
+                status: 200,
+                message: "SSE chat completion had no content".into(),
+            });
+        }
+        return Ok((text, usage));
+    }
+
+    let value: serde_json::Value = serde_json::from_str(trimmed).map_err(|e| {
+        ClientError::ApiError {
+            status: 200,
+            message: format!(
+                "chat completion JSON: {e}; body starts: {}",
+                trimmed.chars().take(180).collect::<String>().replace('\n', " ")
+            ),
+        }
+    })?;
+
+    let usage = extract_usage(&value);
+    if let Some(msg) = value.pointer("/choices/0/message") {
+        let text = message_text(msg);
+        if !text.trim().is_empty() {
+            return Ok((text, usage));
+        }
+    }
+    if let Some(text) = value.get("content").map(value_as_text) {
+        if !text.trim().is_empty() {
+            return Ok((text, usage));
+        }
+    }
+    Err(ClientError::ApiError {
+        status: 200,
+        message: "chat completion had empty assistant content".into(),
+    })
 }
 
 fn chat_url(base_url: &str) -> String {
@@ -87,6 +216,7 @@ async fn post_chat(
     url: &str,
     api_key: Option<&str>,
     body: &ChatCompletionRequest,
+    usage: &UsageCounters,
 ) -> Result<String, ClientError> {
     let mut req = http.post(url).json(body);
     if let Some(key) = api_key {
@@ -101,8 +231,10 @@ async fn post_chat(
             message: text,
         });
     }
-    let body: ChatCompletionResponse = resp.json().await?;
-    Ok(first_choice_text(body))
+    let text = resp.text().await.unwrap_or_default();
+    let (content, tokens) = parse_chat_completion(&text)?;
+    usage.add(tokens);
+    Ok(content)
 }
 
 pub struct DeepSeekClient {
@@ -110,6 +242,7 @@ pub struct DeepSeekClient {
     pub base_url: String,
     pub model: String,
     http: reqwest::Client,
+    usage: Arc<UsageCounters>,
 }
 
 impl DeepSeekClient {
@@ -134,7 +267,8 @@ impl DeepSeekClient {
             api_key,
             base_url,
             model,
-            http: http_client("DSpark/0.1.0", 120)?,
+            http: http_client("DSpark/0.1.0", 180)?,
+            usage: Arc::new(UsageCounters::default()),
         })
     }
 
@@ -157,6 +291,7 @@ impl DeepSeekClient {
             content: prompt.into(),
         });
 
+        // JSON mode + thinking is unsupported and can yield empty/truncated bodies.
         let req_body = ChatCompletionRequest {
             model: self.model.clone(),
             messages,
@@ -166,7 +301,13 @@ impl DeepSeekClient {
             } else {
                 None
             },
-            stream: None,
+            stream: Some(false),
+            thinking: if json_format {
+                Some(serde_json::json!({ "type": "disabled" }))
+            } else {
+                None
+            },
+            max_tokens: Some(8192),
         };
 
         post_chat(
@@ -174,6 +315,7 @@ impl DeepSeekClient {
             &chat_url(&self.base_url),
             Some(&self.api_key),
             &req_body,
+            &self.usage,
         )
         .await
     }
@@ -184,6 +326,7 @@ pub struct OpenAIClient {
     pub base_url: String,
     pub model: String,
     http: reqwest::Client,
+    usage: Arc<UsageCounters>,
 }
 
 impl OpenAIClient {
@@ -205,6 +348,7 @@ impl OpenAIClient {
             base_url,
             model,
             http: http_client("DSpark/0.1.0", 120)?,
+            usage: Arc::new(UsageCounters::default()),
         })
     }
 
@@ -236,7 +380,9 @@ impl OpenAIClient {
             } else {
                 None
             },
-            stream: None,
+            stream: Some(false),
+            thinking: None,
+            max_tokens: Some(8192),
         };
 
         post_chat(
@@ -244,6 +390,7 @@ impl OpenAIClient {
             &chat_url(&self.base_url),
             Some(&self.api_key),
             &req_body,
+            &self.usage,
         )
         .await
     }
@@ -253,6 +400,7 @@ pub struct GeminiClient {
     api_key: String,
     pub model: String,
     http: reqwest::Client,
+    usage: Arc<UsageCounters>,
 }
 
 impl GeminiClient {
@@ -269,6 +417,7 @@ impl GeminiClient {
             api_key,
             model,
             http: http_client("DSpark/0.1.0", 120)?,
+            usage: Arc::new(UsageCounters::default()),
         })
     }
 
@@ -340,6 +489,7 @@ pub struct LocalLLMClient {
     pub base_url: String,
     pub model: String,
     http: reqwest::Client,
+    usage: Arc<UsageCounters>,
 }
 
 impl LocalLLMClient {
@@ -358,6 +508,7 @@ impl LocalLLMClient {
             base_url,
             model,
             http: http_client("DSpark-Local/0.1.0", 180)?,
+            usage: Arc::new(UsageCounters::default()),
         })
     }
 
@@ -457,9 +608,18 @@ impl LocalLLMClient {
                 None
             },
             stream: Some(false),
+            thinking: None,
+            max_tokens: Some(8192),
         };
 
-        post_chat(&self.http, &chat_url(&self.base_url), None, &req_body).await
+        post_chat(
+            &self.http,
+            &chat_url(&self.base_url),
+            None,
+            &req_body,
+            &self.usage,
+        )
+        .await
     }
 }
 
@@ -511,6 +671,15 @@ impl ModelClient {
         }
     }
 
+    pub fn usage(&self) -> TokenUsage {
+        match self {
+            Self::DeepSeek(c) => c.usage.snapshot(),
+            Self::OpenAI(c) => c.usage.snapshot(),
+            Self::Gemini(c) => c.usage.snapshot(),
+            Self::Local(c) => c.usage.snapshot(),
+        }
+    }
+
     pub async fn complete(
         &self,
         prompt: &str,
@@ -541,5 +710,44 @@ impl ModelClient {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_chat_completion_text;
+
+    #[test]
+    fn parses_string_content() {
+        let raw = r#"{"choices":[{"message":{"content":"hello","role":"assistant"}}]}"#;
+        assert_eq!(parse_chat_completion_text(raw).unwrap(), "hello");
+    }
+
+    #[test]
+    fn parses_array_content() {
+        let raw = r#"{"choices":[{"message":{"content":[{"type":"text","text":"ab"},{"type":"text","text":"c"}]}}]}"#;
+        assert_eq!(parse_chat_completion_text(raw).unwrap(), "abc");
+    }
+
+    #[test]
+    fn falls_back_to_reasoning_content() {
+        let raw = r#"{"choices":[{"message":{"content":null,"reasoning_content":"think"}}]}"#;
+        assert_eq!(parse_chat_completion_text(raw).unwrap(), "think");
+    }
+
+    #[test]
+    fn parses_usage_tokens() {
+        let raw = r#"{"choices":[{"message":{"content":"ok"}}],"usage":{"prompt_tokens":11,"completion_tokens":7}}"#;
+        let (_, usage) = super::parse_chat_completion(raw).unwrap();
+        assert_eq!(usage.prompt_tokens, 11);
+        assert_eq!(usage.completion_tokens, 7);
+    }
+
+    #[test]
+    fn parses_sse_stream() {
+        let raw = "data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"}}]}\n\
+data: {\"choices\":[{\"delta\":{\"content\":\"lo\"}}]}\n\
+data: [DONE]\n";
+        assert_eq!(parse_chat_completion_text(raw).unwrap(), "Hello");
     }
 }

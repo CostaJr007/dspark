@@ -1,10 +1,13 @@
-# DSpark CLI
+# DSpark
 
-CLI nativa em Rust para trabalho **dual-engine**: um **criador** rascunha, um **curador** de outra família de modelo audita contratos de I/O. O binário se chama `dspark-cli`.
+Motor nativo em Rust **dual-engine**: um **criador** rascunha, um **curador** de outra família de modelo audita contratos de I/O. Papéis, não fornecedores.
 
-Criador e curador são **papéis**, não fornecedores. Os dois são escolhíveis. O par típico é um rascunho classe Gemini com um curador classe DeepSeek, para o revisor não ser da mesma família que escreveu o código (autoavaliação do mesmo modelo tem viés de confirmação).
+Par padrão (o que este repo usa com chaves OpenAI + DeepSeek):
 
-Configuração em `~/.dspark/config.toml`. Este projeto não substitui nem altera o `grok` da sua máquina.
+- **criador** `gpt-4o-mini`
+- **curador** `deepseek-v4-pro`
+
+Configuração em `~/.dspark/pair.toml`. Este projeto não substitui nem altera o `grok.exe`.
 
 [![Licença: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-stable-orange.svg)](https://www.rust-lang.org/)
@@ -14,145 +17,89 @@ Configuração em `~/.dspark/config.toml`. Este projeto não substitui nem alter
 
 ---
 
+## Binários (não misture)
+
+| Binário | O que é |
+|---|---|
+| `dspark-cli` | TUI tela cheia (rebrand do Grok Build, Apache-2.0). Instalado à parte. Dual-engine é o fluxo padrão (`/pair`, ferramenta `dspark_curate`). |
+| `dspark` | Este crate: CLI do pipeline (`run`, `audit`, `refine`, `arbitrate`, REPL). |
+| `dspark-bench` | Runner opcional de HumanEval / HumanEval+. |
+
+`cargo install --path .` **deste** repo instala só `dspark` e `dspark-bench`. **Não** sobrescreve o `dspark-cli`.
+
+---
+
 ## Como funciona
 
 ```
 especificação / tarefa
     → pesquisa na web (opcional)
     → rascunho do criador
-    → auditoria de I/O do curador (spec, contratos, erros — não a autoavaliação do agente)
+    → auditoria de I/O do curador (spec, contratos, oráculo de doctest — não a autoavaliação do agente)
     → refine se precisar
     → reauditoria
 ```
 
-O curador é LLM-as-a-Verifier: pontua pré-condições, pós-condições, edge cases, complexidade e segurança de recurso. Não deve confiar na nota que o criador dá a si mesmo. Depois do refine, audita de novo.
-
-A busca é ao vivo: Tavily se `TAVILY_API_KEY` existir; senão HTML do DuckDuckGo. Resultado vazio permanece vazio — sem hits inventados.
+A busca é ao vivo: Tavily se `TAVILY_API_KEY` existir; senão HTML do DuckDuckGo. Resultado vazio permanece vazio.
 
 ---
 
-## Instalação
+## Instalação (motor)
 
 ```bash
 git clone https://github.com/CostaJr007/dspark.git
 cd dspark
-cargo install --path .
+cargo install --path . --force
 ```
 
-Isso instala `dspark-cli` (em geral `%USERPROFILE%\.cargo\bin` no Windows, `~/.cargo/bin` nos demais).
-
 ```bash
-dspark-cli --help
-dspark-cli pair
+dspark --help
+dspark pair
 ```
 
 ### Ambiente
 
 ```bash
+export OPENAI_API_KEY="sk-..."
 export DEEPSEEK_API_KEY="sk-..."
-export GEMINI_API_KEY="..."
-export OPENAI_API_KEY="..."
-export TAVILY_API_KEY="..."
-export DSPARK_CREATOR="gemini-3.7-flash"
+export DSPARK_CREATOR="gpt-4o-mini"
 export DSPARK_CURATOR="deepseek-v4-pro"
 ```
 
 PowerShell:
 
 ```powershell
+$env:OPENAI_API_KEY="sk-..."
 $env:DEEPSEEK_API_KEY="sk-..."
 ```
 
-### Par criador / curador
+### Arquivo de par
 
-Copie [dspark.toml.example](dspark.toml.example) para `%USERPROFILE%\.dspark\config.toml` (ou `~/.dspark/config.toml`):
+Copie [dspark.toml.example](dspark.toml.example) para `%USERPROFILE%\.dspark\pair.toml`:
 
 ```toml
-creator = "gemini-3.7-flash"
+creator = "gpt-4o-mini"
 curator = "deepseek-v4-pro"
 research = true
 ```
 
-`dspark-cli pair` mostra o par ativo e avisa se os dois papéis usam o mesmo modelo.
+`dspark pair` mostra o par ativo e avisa se os dois papéis usam o mesmo modelo.
 
 ---
 
 ## Comandos
 
-Sem subcomando, abre o REPL com o par salvo:
-
 ```bash
-dspark-cli
-dspark-cli interactive --generator gemini-3.7-flash --curator deepseek-v4-pro --theme bloomberg
-```
-
-Utilitários:
-
-```bash
-dspark-cli pair
-dspark-cli search "tokio spawn_blocking vs spawn"
-dspark-cli search --deep "tarefas em background FastAPI"
-dspark-cli fetch https://docs.rs/tokio
-dspark-cli audit src/search.rs --spec "Busca binária, O(log N), lista vazia é válida"
-dspark-cli refine src/lru.rs --spec "get/put O(1), capacidade limitada" --in-place
-dspark-cli arbitrate a.rs b.rs --spec "Fila lock-free"
-dspark-cli run "LRU cache limitado em Rust" --lang rust --out lru.rs
-dspark-cli local
-dspark-cli "Refatore auth.rs para bcrypt e cubra senha vazia"
-```
-
-Comandos do REPL: `/search`, `/fetch`, `/files`, `/read`, `/sh`, `/audit`, `/refine`, `/local`, `/models`, `/theme bloomberg|cyan|matrix`.
-
----
-
-## MCP
-
-```json
-{
-  "mcpServers": {
-    "dspark": {
-      "command": "dspark-cli",
-      "args": ["mcp"],
-      "env": {
-        "DEEPSEEK_API_KEY": "sua-chave"
-      }
-    }
-  }
-}
-```
-
-Ferramentas: `dspark_audit_code`, `dspark_refine_code`, `dspark_arbitrate`.
-
----
-
-## Biblioteca Rust
-
-```rust
-use dspark::DeepSeekCurator;
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let curator = DeepSeekCurator::new()?;
-    let verdict = curator
-        .audit(
-            "fn divide_chunks(l: &[u8], n: usize) {}",
-            "Particionar em lotes de tamanho n. Tratar n == 0.",
-            Some("rust"),
-        )
-        .await?;
-    println!("Veredito: {} (Score: {}/100)", verdict.verdict, verdict.score);
-    Ok(())
-}
+dspark
+dspark run "LeetCode 1 Two Sum em Python" --lang python --no-research --out two_sum.py
+dspark audit two_sum.py --spec "Retorne os índices de dois números que somam o alvo" --lang python
+dspark refine two_sum.py --spec "Duplicatas; hashmap O(n)" --in-place --lang python
 ```
 
 ---
 
-## SDK Python (opcional)
+## TUI (`dspark-cli`)
 
-O pacote `dspark/` é SDK de compatibilidade (`pip install -e .`). Ele **não** instala o comando `dspark`, para não sombrear o `dspark-cli`. Use `python -m dspark.cli` só se quiser o entrypoint legado.
+A UI tela cheia é o uso do dia a dia. O modelo default é o criador; `/pair` grava criador + curador. Depois de editar, o agente é lembrado de chamar `dspark_curate`.
 
----
-
-## Licença
-
-MIT — [Adeilson Costa](https://github.com/CostaJr007).
+Não faça `cargo install` deste crate por cima de um `dspark-cli.exe` TUI (~300 MB).

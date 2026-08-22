@@ -12,7 +12,11 @@ impl GeminiGenerator {
     pub fn new() -> Result<Self, ClientError> {
         Ok(Self {
             client: ModelClient::from_spec(
-                &std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-2.5-flash".into()),
+                &std::env::var("DSPARK_CREATOR")
+                    .ok()
+                    .filter(|s| !s.trim().is_empty())
+                    .or_else(|| std::env::var("GEMINI_MODEL").ok().filter(|s| !s.trim().is_empty()))
+                    .unwrap_or_else(|| crate::pair::DsparkPair::load().creator),
             )?,
         })
     }

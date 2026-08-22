@@ -53,7 +53,17 @@ fn audit_result_approved() {
         raw_response: String::new(),
     };
     assert!(res.is_approved());
+    assert!(!res.must_revise());
     assert_eq!(res.edge_cases.len(), 1);
+}
+
+#[test]
+fn parse_chat_array_content() {
+    let raw = r#"{"choices":[{"message":{"content":[{"type":"text","text":"ok"}]}}]}"#;
+    assert_eq!(
+        dspark::client::parse_chat_completion_text(raw).unwrap(),
+        "ok"
+    );
 }
 
 #[test]

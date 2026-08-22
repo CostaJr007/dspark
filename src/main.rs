@@ -16,8 +16,8 @@ use std::fs;
 use std::path::Path;
 
 #[derive(Parser)]
-#[command(name = "dspark-cli")]
-#[command(about = "DSpark CLI: creator/curator dual-engine (I/O arbitration)")]
+#[command(name = "dspark")]
+#[command(about = "DSpark engine: creator drafts, curator audits I/O")]
 #[command(version = "0.1.0")]
 struct Cli {
     #[command(subcommand)]
@@ -30,14 +30,14 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Show creator/curator pair (~/.dspark/config.toml)
+    /// Show creator/curator pair (~/.dspark/pair.toml)
     Pair,
     /// Start interactive terminal REPL
     Interactive {
-        #[arg(short, long, default_value = "gemini-3.7-flash")]
-        generator: String,
-        #[arg(short, long, default_value = "deepseek-v4-pro")]
-        curator: String,
+        #[arg(short, long)]
+        generator: Option<String>,
+        #[arg(short, long)]
+        curator: Option<String>,
         #[arg(short, long, default_value = "bloomberg")]
         theme: String,
     },
@@ -91,10 +91,10 @@ enum Commands {
         lang: Option<String>,
         #[arg(short, long)]
         out: Option<String>,
-        #[arg(short, long, default_value = "gemini-2.5-flash")]
-        generator: String,
-        #[arg(short, long, default_value = "deepseek-v4-flash")]
-        curator: String,
+        #[arg(short, long)]
+        generator: Option<String>,
+        #[arg(short, long)]
+        curator: Option<String>,
         /// Skip live web research before generating
         #[arg(long = "no-research")]
         no_research: bool,
@@ -103,7 +103,7 @@ enum Commands {
     Bench {
         #[arg(short, long, default_value = "gpt-4o-mini")]
         generator: String,
-        #[arg(short, long, default_value = "deepseek-v4-flash")]
+        #[arg(short, long, default_value = "deepseek-v4-pro")]
         curator: String,
         #[arg(short = 'n', long, default_value_t = 5)]
         limit: usize,
@@ -157,7 +157,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("creator={}", pair.creator);
             println!("curator={}", pair.curator);
             println!("research={}", pair.research);
-            println!("config={}", DsparkPair::config_path().display());
+            println!("pair_file={}", DsparkPair::pair_path().display());
             if let Some(w) = pair.same_family_warning() {
                 eprintln!("{}", w.yellow());
             }
@@ -166,7 +166,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             generator,
             curator,
             theme,
-        }) => start_repl(&generator, &curator, &theme).await?,
+        }) => {
+            let pair = DsparkPair::load();
+            start_repl(
+                generator.as_deref().unwrap_or(&pair.creator),
+                curator.as_deref().unwrap_or(&pair.curator),
+                &theme,
+            )
+            .await?;
+        }
         Some(Commands::Search { query, limit, deep }) => {
             let engine = WebSearchEngine::new();
             println!(
@@ -218,10 +226,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }) => {
             let code = read_file_or_string(&file)?;
             let spec = read_file_or_string(&spec)?;
-            let curator = DeepSeekCurator::new()?;
+            let pair = DsparkPair::load();
+            let curator = DeepSeekCurator::with_model(&pair.curator)?;
             println!(
                 "{}",
-                format!("Auditing '{}' with DeepSeek Reasoner...", file).dimmed()
+                format!("Auditing '{}' with curator {}...", file, pair.curator).dimmed()
             );
             let result = curator.audit(&code, &spec, lang.as_deref()).await?;
             if json {
@@ -279,7 +288,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }) => {
             let code = read_file_or_string(&file)?;
             let spec = read_file_or_string(&spec)?;
-            let curator = DeepSeekCurator::new()?;
+            let pair = DsparkPair::load();
+            let curator = DeepSeekCurator::with_model(&pair.curator)?;
             let result = curator.refine(&code, &spec, None, lang.as_deref()).await?;
             if in_place && Path::new(&file).is_file() {
                 fs::write(&file, &result.refined_code)?;
@@ -316,6 +326,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             curator,
             no_research,
         }) => {
+            let pair = DsparkPair::load();
+            let generator = generator.unwrap_or_else(|| pair.creator.clone());
+            let curator = curator.unwrap_or_else(|| pair.curator.clone());
+            println!(
+                "{}",
+                format!("Pipeline creator={} curator={}", generator, curator).dimmed()
+            );
             let pipeline = DSparkPipeline::with_models(&generator, &curator)?;
             let draft_code = match draft {
                 Some(path) => Some(read_file_or_string(&path)?),
@@ -396,6 +413,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .blue()
                         .bold()
                 );
+                println!("  Generator                : {}", report.generator_model);
+                println!("  Curator                  : {}", report.curator_model);
                 println!("  Total Problems Evaluated : {}", report.total_problems);
                 println!(
                     "  Baseline Pass@1 Rate     : {} ({}/{})",
@@ -410,8 +429,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     report.total_problems
                 );
                 println!(
-                    "  Empirical Accuracy Gain  : {}\n",
-                    format!("+{:.1}%", report.accuracy_delta).green()
+                    "  Empirical Accuracy Gain  : {}",
+                    format!("{:+.1}%", report.accuracy_delta).green()
+                );
+                println!(
+                    "  Rescued (fail→pass)      : {}  |  Regressed (pass→fail): {}\n",
+                    report.rescued_count, report.regress_count
                 );
                 println!("  Detailed Task Breakdown:");
                 for r in &report.results {

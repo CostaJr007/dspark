@@ -1,10 +1,11 @@
 //! Creator/curator pairing. Either role can be any OpenAI-compatible model.
+//! Live pair is `~/.dspark/pair.toml` (TUI and engine share it).
 
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
-pub const DEFAULT_CREATOR: &str = "gemini-3.7-flash";
+pub const DEFAULT_CREATOR: &str = "gpt-4o-mini";
 pub const DEFAULT_CURATOR: &str = "deepseek-v4-pro";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,20 +39,31 @@ impl Default for DsparkPair {
 }
 
 impl DsparkPair {
-    pub fn config_path() -> PathBuf {
+    fn home_dir() -> PathBuf {
         dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join(".dspark")
-            .join("config.toml")
+    }
+
+    /// Shared pair file written by the TUI (`/pair`) and this engine.
+    pub fn pair_path() -> PathBuf {
+        Self::home_dir().join("pair.toml")
+    }
+
+    /// Legacy path; only used if `pair.toml` is missing.
+    pub fn config_path() -> PathBuf {
+        Self::home_dir().join("config.toml")
+    }
+
+    fn load_file(path: &std::path::Path) -> Option<Self> {
+        let text = fs::read_to_string(path).ok()?;
+        toml::from_str::<DsparkPair>(&text).ok()
     }
 
     pub fn load() -> Self {
-        let mut pair = Self::default();
-        if let Ok(text) = fs::read_to_string(Self::config_path()) {
-            if let Ok(file) = toml::from_str::<DsparkPair>(&text) {
-                pair = file;
-            }
-        }
+        let mut pair = Self::load_file(&Self::pair_path())
+            .or_else(|| Self::load_file(&Self::config_path()))
+            .unwrap_or_default();
         if let Ok(c) = std::env::var("DSPARK_CREATOR") {
             if !c.trim().is_empty() {
                 pair.creator = c;
@@ -63,6 +75,20 @@ impl DsparkPair {
             }
         }
         pair
+    }
+
+    pub fn save(&self) -> std::io::Result<()> {
+        let path = Self::pair_path();
+        if let Some(dir) = path.parent() {
+            fs::create_dir_all(dir)?;
+        }
+        fs::write(
+            path,
+            format!(
+                "creator = \"{}\"\ncurator = \"{}\"\nresearch = {}\n",
+                self.creator, self.curator, self.research
+            ),
+        )
     }
 
     pub fn same_family_warning(&self) -> Option<String> {

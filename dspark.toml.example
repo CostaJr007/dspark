@@ -1,4 +1,4 @@
-# Copy to %USERPROFILE%\.dspark\config.toml
-creator = "gemini-3.7-flash"
+# Copy to %USERPROFILE%\.dspark\pair.toml  (not config.toml — that file is the TUI)
+creator = "gpt-4o-mini"
 curator = "deepseek-v4-pro"
 research = true

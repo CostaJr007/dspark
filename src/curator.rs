@@ -1,9 +1,10 @@
 //! DeepSeek Curator: audit, refine, and arbitrate implementations.
 
 use crate::client::{ClientError, ModelClient};
+use crate::oracle::{run_python_spec_oracle, OracleFailure};
 use crate::prompts::{ARBITRATOR_SYSTEM_PROMPT, REFINER_SYSTEM_PROMPT};
-use crate::verifier::VERIFIER_SYSTEM_PROMPT;
 use crate::util::{extract_code_blocks, extract_json, json_string, json_string_vec, json_u32};
+use crate::verifier::VERIFIER_SYSTEM_PROMPT;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
@@ -111,6 +112,52 @@ impl AuditResult {
     pub fn is_approved(&self) -> bool {
         self.verdict == CurationVerdict::Approved
     }
+
+    /// True when the draft must not ship as-is (issues, oracle fail, or low score).
+    pub fn must_revise(&self) -> bool {
+        self.verdict != CurationVerdict::Approved
+            || self.refined_code.is_some()
+            || !self.counter_examples.is_empty()
+            || !self.critical_issues.is_empty()
+            || self.score < 80
+            || self.edge_cases.iter().any(|e| !e.handled_properly)
+    }
+
+    fn reconcile(&mut self) {
+        let unhandled = self.edge_cases.iter().any(|e| !e.handled_properly);
+        if !self.counter_examples.is_empty() || !self.critical_issues.is_empty() || unhandled {
+            if self.verdict == CurationVerdict::Approved {
+                self.verdict = CurationVerdict::NeedsRevision;
+            }
+            if self.score > 70 {
+                self.score = 70;
+            }
+        }
+    }
+
+    fn apply_oracle(&mut self, failures: Vec<OracleFailure>) {
+        if failures.is_empty() {
+            return;
+        }
+        for f in failures {
+            let msg = if f.message.is_empty() {
+                format!("{}: {} vs {}", f.kind, f.expected, f.actual)
+            } else {
+                f.message.clone()
+            };
+            self.critical_issues.push(format!("spec-oracle: {msg}"));
+            self.counter_examples.push(CounterExample {
+                failing_input: f.input,
+                expected_behavior: f.expected,
+                actual_behavior: if f.actual.is_empty() { msg } else { f.actual },
+                severity: "HIGH".into(),
+            });
+        }
+        self.verdict = CurationVerdict::NeedsRevision;
+        if self.score > 50 {
+            self.score = 50;
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -140,10 +187,12 @@ pub struct DeepSeekCurator {
 
 impl DeepSeekCurator {
     pub fn new() -> Result<Self, CuratorError> {
+        let spec = std::env::var("DEEPSEEK_MODEL")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| crate::pair::DsparkPair::load().curator);
         Ok(Self {
-            client: ModelClient::from_spec(
-                &std::env::var("DEEPSEEK_MODEL").unwrap_or_else(|_| "deepseek-v4-flash".into()),
-            )?,
+            client: ModelClient::from_spec(&spec)?,
         })
     }
 
@@ -157,6 +206,10 @@ impl DeepSeekCurator {
         Self { client }
     }
 
+    pub fn usage(&self) -> crate::cost::TokenUsage {
+        self.client.usage()
+    }
+
     async fn complete_json(
         &self,
         prompt: &str,
@@ -168,11 +221,12 @@ impl DeepSeekCurator {
             .complete(prompt, Some(system), temperature, true)
             .await
         {
-            Ok(s) => Ok(s),
-            Err(_) => Ok(self
+            Ok(s) if !s.trim().is_empty() => Ok(s),
+            Ok(_) | Err(_) => self
                 .client
                 .complete(prompt, Some(system), temperature, false)
-                .await?),
+                .await
+                .map_err(CuratorError::from),
         }
     }
 
@@ -189,14 +243,23 @@ impl DeepSeekCurator {
         let user_prompt = format!(
             "### SPECIFICATION / REQUIREMENTS:\n{specification}\n\n\
              ### CANDIDATE IMPLEMENTATION TO AUDIT:\n{lang_str}```{lang_fence}\n{code}\n```\n\n\
-             Perform strict reasoning audit, I/O verification, edge case simulation, and return the required JSON."
+             Execute every example in the specification (doctest / >>> / encode-decode roundtrip). \
+             APPROVED is forbidden if any of those fail. Return the required JSON."
         );
 
         let raw_resp = self
             .complete_json(&user_prompt, VERIFIER_SYSTEM_PROMPT, 0.1)
             .await?;
         let data = extract_json(&raw_resp).map_err(CuratorError::Parse)?;
-        Ok(audit_from_value(&data, raw_resp))
+        let mut audit = audit_from_value(&data, raw_resp);
+        audit.reconcile();
+        let py = language
+            .map(|l| l.eq_ignore_ascii_case("python") || l.eq_ignore_ascii_case("py"))
+            .unwrap_or_else(|| looks_like_python(code, specification));
+        if py {
+            audit.apply_oracle(run_python_spec_oracle(code, specification));
+        }
+        Ok(audit)
     }
 
     pub async fn refine(
@@ -216,14 +279,14 @@ impl DeepSeekCurator {
         let user_prompt = format!(
             "### SPECIFICATION:\n{specification}\n\n{feedback_section}\
              ### DRAFT CODE:\n{lang_str}```{lang_fence}\n{code}\n```\n\n\
-             Refine the code to 100% production readiness. Fix all potential edge cases and enforce strict I/O typing."
+             Refine the code so every specification example passes. Return only a markdown code block."
         );
 
         let raw_resp = self
             .client
             .complete(&user_prompt, Some(REFINER_SYSTEM_PROMPT), 0.2, false)
             .await?;
-        let refined_code = extract_code_blocks(&raw_resp);
+        let refined_code = extract_refined_source(&raw_resp);
 
         let changes: Vec<String> = raw_resp
             .lines()
@@ -343,7 +406,7 @@ fn audit_from_value(data: &Value, raw: String) -> AuditResult {
         Some(refined)
     };
 
-    AuditResult {
+    let mut audit = AuditResult {
         verdict,
         score: json_u32(data, "score", 70),
         summary: json_string(data, "summary"),
@@ -362,7 +425,29 @@ fn audit_from_value(data: &Value, raw: String) -> AuditResult {
         suggested_improvements: json_string_vec(data, "suggested_improvements"),
         refined_code,
         raw_response: raw,
+    };
+    audit.reconcile();
+    audit
+}
+
+fn extract_refined_source(raw: &str) -> String {
+    if let Ok(data) = extract_json(raw) {
+        let from_json = json_string(&data, "refined_code");
+        let from_json = if from_json.trim().is_empty() {
+            json_string(&data, "code")
+        } else {
+            from_json
+        };
+        if !from_json.trim().is_empty() {
+            return extract_code_blocks(&from_json);
+        }
     }
+    extract_code_blocks(raw)
+}
+
+fn looks_like_python(code: &str, spec: &str) -> bool {
+    let blob = format!("{code}\n{spec}").to_lowercase();
+    blob.contains("def ") || blob.contains(">>> ") || blob.contains("import ")
 }
 
 #[cfg(test)]
@@ -383,7 +468,32 @@ mod tests {
         });
         let res = audit_from_value(&data, String::new());
         assert!(res.is_approved());
+        assert!(!res.must_revise());
         assert_eq!(res.score, 95);
         assert_eq!(res.edge_cases.len(), 1);
+    }
+
+    #[test]
+    fn approved_with_counter_example_is_forced_to_revise() {
+        let data = serde_json::json!({
+            "verdict": "APPROVED",
+            "score": 100,
+            "summary": "Looks fine",
+            "counter_examples": [{
+                "failing_input": "[]",
+                "expected_behavior": "[]",
+                "actual_behavior": "None"
+            }]
+        });
+        let res = audit_from_value(&data, String::new());
+        assert!(!res.is_approved());
+        assert!(res.must_revise());
+        assert!(res.score <= 70);
+    }
+
+    #[test]
+    fn extract_refined_from_json_blob() {
+        let raw = r#"{"refined_code": "def f():\n    return 1"}"#;
+        assert!(extract_refined_source(raw).contains("def f()"));
     }
 }

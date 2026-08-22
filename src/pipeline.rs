@@ -67,7 +67,7 @@ impl DSparkPipeline {
             let spec = self
                 .generator_spec
                 .clone()
-                .unwrap_or_else(|| "gemini-2.5-flash".to_string());
+                .unwrap_or_else(|| crate::pair::DsparkPair::load().creator);
             let generator = GeminiGenerator::with_client(
                 ModelClient::from_spec(&spec).map_err(CuratorError::from)?,
             );
@@ -86,7 +86,7 @@ impl DSparkPipeline {
         let mut refined = false;
         let mut refine_result = None;
 
-        if !audit.is_approved() || audit.score < self.auto_refine_threshold {
+        if audit.must_revise() || audit.score < self.auto_refine_threshold {
             if let Some(code) = &audit.refined_code {
                 final_code = code.clone();
                 refined = true;

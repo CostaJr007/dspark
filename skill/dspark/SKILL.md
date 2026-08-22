@@ -5,7 +5,7 @@ description: Dual-engine creator/curator. A quality creator drafts; a different-
 
 # DSpark: dual-engine curator
 
-Prefer the native binary `dspark-cli`. Creator and curator are roles you choose (default pairing: Gemini-class draft + DeepSeek-class I/O curator).
+Prefer the native binary `dspark` (pipeline) or the TUI `dspark-cli`. Creator and curator are roles (default pairing: gpt-4o-mini draft + deepseek-v4-pro I/O curator).
 
 ## When to activate
 
@@ -16,8 +16,8 @@ Prefer the native binary `dspark-cli`. Creator and curator are roles you choose 
 ## How to curate
 
 ```powershell
-dspark-cli audit path/to/file.py --spec "Expected behavior, edge cases, and I/O contracts"
-dspark-cli refine path/to/file.py --spec "Requirements" --in-place
+dspark audit path/to/file.py --spec "Expected behavior, edge cases, and I/O contracts"
+dspark refine path/to/file.py --spec "Requirements" --in-place
 ```
 
 If the binary is not on PATH, fall back to:

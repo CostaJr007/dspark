@@ -30,3 +30,6 @@ ENV/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Generated smoke output
+examples/out/

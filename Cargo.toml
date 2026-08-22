@@ -15,8 +15,12 @@ name = "dspark"
 path = "src/lib.rs"
 
 [[bin]]
-name = "dspark-cli"
+name = "dspark"
 path = "src/main.rs"
+
+[[bin]]
+name = "dspark-bench"
+path = "src/bin/dspark-bench.rs"
 
 [[example]]
 name = "simple_audit"
