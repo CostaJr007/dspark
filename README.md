@@ -1,49 +1,50 @@
 # DSpark
 
-Native Rust **dual-engine** for code: a **creator** drafts, a **curator** from a different model family audits I/O contracts. Roles, not vendors.
+Dual-engine coding: a **creator** drafts, a **curator** from a different model family audits I/O contracts. Roles, not vendors.
 
-Default pair (what this repo actually runs with OpenAI + DeepSeek keys):
+Default pair:
 
-- **creator** `gpt-4o-mini`
-- **curator** `deepseek-v4-pro`
+| Role | Model |
+|---|---|
+| creator | `gpt-4o-mini` |
+| curator | `deepseek-v4-pro` |
 
-Config lives in `~/.dspark/pair.toml`. This project does not replace or modify `grok.exe`.
+Pair file: `~/.dspark/pair.toml`. You pick the two models. Curation is the default — you do not ask for it.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-stable-orange.svg)](https://www.rust-lang.org/)
-[![MCP](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io/)
 
 [Português](README.pt-BR.md)
 
 ---
 
-## Binaries (do not mix them up)
+## What to run
 
-| Binary | What it is |
+| Command | Use |
 |---|---|
-| `dspark-cli` | Fullscreen TUI. Dual-engine is the default workflow (`/pair`, tool `dspark_curate`). |
-| `dspark` | This crate: orchestration CLI (`run`, `audit`, `refine`, `arbitrate`, REPL). |
+| **`dspark-cli`** | Daily driver. Fullscreen TUI in a repo. Creator writes; curator runs after each code edit. |
+| **`dspark`** | This crate. Pipeline and library: `run`, `audit`, `refine`, `arbitrate`, REPL, MCP. |
 
-`cargo install --path .` from **this** repo installs `dspark` only. It will **not** overwrite `dspark-cli`.
+TUI source: [CostaJr007/dspark-app](https://github.com/CostaJr007/dspark-app).
+
+```powershell
+cd your-project
+dspark-cli
+```
+
+`/pair` only changes which models fill the two roles.
 
 ---
 
-## How it works
+## This repository (`dspark`)
 
 ```
-spec / task
-    → web research (optional)
-    → creator draft
-    → curator I/O audit (spec, contracts, doctest oracle — not the agent's self-score)
-    → refine if needed
-    → re-audit
+spec
+  → creator draft
+  → curator I/O audit (contracts, doctest oracle — not the author's self-score)
+  → refine if needed
+  → re-audit
 ```
-
-Search is live: Tavily when `TAVILY_API_KEY` is set, otherwise DuckDuckGo HTML. Empty results stay empty — no fake hits.
-
----
-
-## Install (engine)
 
 ```bash
 git clone https://github.com/CostaJr007/dspark.git
@@ -51,98 +52,29 @@ cd dspark
 cargo install --path . --force
 ```
 
+That installs **`dspark` only**. It does not overwrite `dspark-cli`.
+
 ```bash
-dspark --help
 dspark pair
+dspark run "Bounded LRU cache in Rust" --lang rust --no-research --out lru.rs
+dspark audit lru.rs --spec "O(1) get/put, bounded capacity" --lang rust
+dspark refine lru.rs --spec "O(1) get/put, bounded capacity" --in-place --lang rust
 ```
 
 ### Environment
 
 ```bash
-export OPENAI_API_KEY="sk-..."            # creator default
-export DEEPSEEK_API_KEY="sk-..."          # curator default
-export GEMINI_API_KEY="..."               # only if the creator is Gemini
-export TAVILY_API_KEY="..."               # optional ranked search
-export DSPARK_CREATOR="gpt-4o-mini"       # overrides pair.toml
+export OPENAI_API_KEY="..."      # creator
+export DEEPSEEK_API_KEY="..."    # curator
+export DSPARK_CREATOR="gpt-4o-mini"
 export DSPARK_CURATOR="deepseek-v4-pro"
 ```
 
-PowerShell:
+Copy [dspark.toml.example](dspark.toml.example) to `~/.dspark/pair.toml`.
 
-```powershell
-$env:OPENAI_API_KEY="sk-..."
-$env:DEEPSEEK_API_KEY="sk-..."
-```
+Search is live (Tavily if `TAVILY_API_KEY` is set, otherwise DuckDuckGo HTML). Empty results stay empty.
 
-### Pair file
-
-Copy [dspark.toml.example](dspark.toml.example) to `%USERPROFILE%\.dspark\pair.toml` (or `~/.dspark/pair.toml`):
-
-```toml
-creator = "gpt-4o-mini"
-curator = "deepseek-v4-pro"
-research = true
-```
-
-`dspark pair` prints the active pair and warns if both roles are the same model.
-
----
-
-## Commands
-
-No-args starts the interactive REPL with the saved pair:
-
-```bash
-dspark
-dspark interactive --theme bloomberg
-```
-
-One-shot and utilities:
-
-```bash
-dspark pair
-dspark run "LeetCode 1 Two Sum in Python" --lang python --no-research --out two_sum.py
-dspark audit two_sum.py --spec "Return indices of two numbers that add to target" --lang python
-dspark refine two_sum.py --spec "Handle duplicates; O(n) hashmap" --in-place --lang python
-dspark search "tokio spawn_blocking vs spawn"
-dspark fetch https://docs.rs/tokio
-dspark local
-```
-
-REPL slash commands: `/search`, `/fetch`, `/files`, `/read`, `/sh`, `/audit`, `/refine`, `/local`, `/models`, `/theme bloomberg|cyan|matrix`.
-
----
-
-## TUI (`dspark-cli`)
-
-The fullscreen UI is the daily driver. Default model is the creator; `/pair` sets creator + curator (`fork_secondary_model`). After edits the agent is reminded to call `dspark_curate`.
-
-Do not `cargo install` this engine crate over an existing `dspark-cli.exe` TUI (~300 MB).
-
----
-
-## MCP
-
-```json
-{
-  "mcpServers": {
-    "dspark": {
-      "command": "dspark",
-      "args": ["mcp"],
-      "env": {
-        "DEEPSEEK_API_KEY": "your-key",
-        "OPENAI_API_KEY": "your-key"
-      }
-    }
-  }
-}
-```
-
-Tools: `dspark_audit_code`, `dspark_refine_code`, `dspark_arbitrate`.
-
----
-
-## Rust library
+### Library
 
 ```rust
 use dspark::DeepSeekCurator;
@@ -157,7 +89,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some("rust"),
         )
         .await?;
-    println!("Verdict: {} (Score: {}/100)", verdict.verdict, verdict.score);
+    println!("{} {}/100", verdict.verdict, verdict.score);
     Ok(())
 }
 ```
@@ -167,4 +99,21 @@ cargo run --example simple_audit
 cargo run --example arbitrate_candidates
 ```
 
-The `dspark/` Python package is a compatibility SDK (`pip install -e .`). It does **not** install a console script that shadows `dspark` or `dspark-cli`. Use `python -m dspark.cli` only for the legacy entrypoint.
+### MCP
+
+```json
+{
+  "mcpServers": {
+    "dspark": {
+      "command": "dspark",
+      "args": ["mcp"],
+      "env": {
+        "OPENAI_API_KEY": "your-key",
+        "DEEPSEEK_API_KEY": "your-key"
+      }
+    }
+  }
+}
+```
+
+Tools: `dspark_audit_code`, `dspark_refine_code`, `dspark_arbitrate`.
