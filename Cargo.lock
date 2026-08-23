@@ -2212,6 +2212,34 @@ dependencies = [
 
 [[package]]
 name = "criterion"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f2b12d017a929603d80db1831cd3a24082f8137ce19c69e6447f54f5fc8d692f"
+dependencies = [
+ "anes",
+ "cast",
+ "ciborium",
+ "clap",
+ "criterion-plot",
+ "futures",
+ "is-terminal",
+ "itertools 0.10.5",
+ "num-traits",
+ "once_cell",
+ "oorandom",
+ "plotters",
+ "rayon",
+ "regex",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "tinytemplate",
+ "tokio",
+ "walkdir",
+]
+
+[[package]]
+name = "criterion"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3bf7af66b0989381bd0be551bd7cc91912a655a58c6918420c9527b1fd8b4679"
@@ -2899,6 +2927,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "colored 2.2.0",
+ "criterion 0.5.1",
  "dirs 5.0.1",
  "ordered-float",
  "petgraph 0.6.5",
@@ -5607,6 +5636,17 @@ checksum = "4f867b9d1d896b67beb18518eda36fdb77a32ea590de864f1325b294a6d14397"
 dependencies = [
  "memchr",
  "serde",
+]
+
+[[package]]
+name = "is-terminal"
+version = "0.4.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
+dependencies = [
+ "hermit-abi",
+ "libc",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -13455,7 +13495,7 @@ dependencies = [
 name = "xai-fsnotify"
 version = "0.1.0"
 dependencies = [
- "criterion",
+ "criterion 0.6.0",
  "dunce",
  "git2",
  "globset",
@@ -13744,7 +13784,7 @@ dependencies = [
  "anstyle",
  "anstyle-lossy",
  "anstyle-syntect",
- "criterion",
+ "criterion 0.6.0",
  "crossterm",
  "html-escape",
  "linkify",
@@ -13882,7 +13922,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "core-foundation",
- "criterion",
+ "criterion 0.6.0",
  "crossterm",
  "derive_more 2.1.1",
  "dirs 5.0.1",
@@ -14295,7 +14335,7 @@ dependencies = [
  "bytes",
  "chrono",
  "clap",
- "criterion",
+ "criterion 0.6.0",
  "ctor",
  "dashmap",
  "dhat",
@@ -14955,7 +14995,7 @@ dependencies = [
  "anstyle-parse",
  "anyhow",
  "colored_json",
- "criterion",
+ "criterion 0.6.0",
  "crossterm",
  "lipsum",
  "ratatui",

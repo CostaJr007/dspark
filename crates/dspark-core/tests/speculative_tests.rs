@@ -177,3 +177,64 @@ fn test_prompt_optimizer_prefix_cache_format() {
     assert!(prompt.find("Candidate A Implementation").unwrap() < prompt.find("Comparative Evaluation Criteria").unwrap());
     assert!(prompt.contains("Check bounds"));
 }
+
+#[tokio::test]
+async fn test_pivot_tournament_complexity_and_rankings() {
+    use dspark::client::LocalLLMClient;
+    use dspark::engine::PivotTournament;
+
+    // Build 5 simulated candidate trajectories
+    let mut trajectories = Vec::new();
+    for i in 0..5 {
+        trajectories.push(DraftTrajectory {
+            id: i,
+            full_code: format!("fn candidate_{}() {{ {} }}", i, i),
+            code_blocks: vec![CodeBlock {
+                function_name: format!("candidate_{}", i),
+                code: format!("fn candidate_{}() {{ {} }}", i, i),
+                line_count: 1,
+            }],
+            confidence_score: 0.8,
+            ast_valid: true,
+        });
+    }
+
+    let local_client = LocalLLMClient::new(Some("http://127.0.0.1:11434/v1"), Some("qwen")).unwrap();
+    let tournament = PivotTournament::new(dspark::client::ModelClient::Local(local_client), 2);
+
+    let res = tournament.run_tournament(&trajectories, "Check correctness").await;
+
+    // For N=5, k=2:
+    // Stage 1 (Ring pass): 5 comparisons
+    // Stage 3 (Non-pivots vs Pivots): (5 - 2) * 2 = 6 comparisons
+    // Stage 3 (Pivots vs Pivots): (2 * 1) / 2 = 1 comparison
+    // Total comparisons = 5 + 6 + 1 = 12 comparisons << 20 all-pairs comparisons
+    assert_eq!(res.total_comparisons, 12);
+    assert_eq!(res.rankings.len(), 5);
+    assert!(res.best_trajectory_idx < 5);
+}
+
+#[test]
+fn test_dependency_resolver_trait_polymorphism() {
+    use dspark::utils::{DependencyResolver, RegexResolver};
+
+    let resolver: Box<dyn DependencyResolver> = Box::new(RegexResolver::new());
+    let source = r#"
+fn step_a() { println!("a"); }
+fn step_b() { step_a(); }
+fn step_c() { step_b(); }
+"#;
+
+    let blocks = resolver.split_into_blocks(source);
+    assert_eq!(blocks.len(), 3);
+
+    let (dep_graph, is_valid) = resolver.resolve(&blocks);
+    assert!(is_valid);
+    assert!(!dep_graph.has_cycle());
+
+    let sorted = dep_graph.topological_sort();
+    assert_eq!(sorted.len(), 3);
+    assert_eq!(sorted[0].function_name, "step_a");
+    assert_eq!(sorted[1].function_name, "step_b");
+    assert_eq!(sorted[2].function_name, "step_c");
+}

@@ -39,10 +39,19 @@ impl DependencyGraph {
     }
 }
 
+pub trait DependencyResolver: Send + Sync {
+    /// Resolves code blocks into a causal dependency graph
+    fn resolve(&self, code_blocks: &[CodeBlock]) -> (DependencyGraph, bool);
+    /// Extracts function blocks from a monolithic source string
+    fn split_into_blocks<'a>(&self, source: &'a str) -> Vec<CodeBlock>;
+}
+
 pub struct AstResolver {
     fn_def_re: Regex,
     fn_call_re: Regex,
 }
+
+pub type RegexResolver = AstResolver;
 
 impl AstResolver {
     pub fn new() -> Self {
@@ -58,6 +67,16 @@ impl AstResolver {
 impl Default for AstResolver {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl DependencyResolver for AstResolver {
+    fn resolve(&self, code_blocks: &[CodeBlock]) -> (DependencyGraph, bool) {
+        self.resolve(code_blocks)
+    }
+
+    fn split_into_blocks<'a>(&self, source: &'a str) -> Vec<CodeBlock> {
+        self.split_into_blocks(source)
     }
 }
 

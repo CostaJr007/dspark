@@ -34,3 +34,10 @@ rayon = "1.10"
 petgraph = "0.6"
 statrs = "0.17"
 ordered-float = "4.2"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["async_tokio"] }
+
+[[bench]]
+name = "speculative_benchmarks"
+harness = false

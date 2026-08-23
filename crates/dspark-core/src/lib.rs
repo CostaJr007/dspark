@@ -33,5 +33,6 @@ pub use engine::{
 pub use generator::GeminiGenerator;
 pub use pair::DsparkPair;
 pub use pipeline::DSparkPipeline;
-pub use search::WebSearchEngine;
-pub use utils::{AstResolver, CodeBlock, DependencyGraph, PromptOptimizer};
+pub use utils::{
+    AstResolver, CodeBlock, DependencyGraph, DependencyResolver, PromptOptimizer, RegexResolver,
+};
