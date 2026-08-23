@@ -2,7 +2,8 @@
 End-to-End CEGAR Pipeline test with simulated Creator, Curator and Refiner.
 """
 
-import pytest
+import asyncio
+import unittest
 from dspark.pipeline.cegar import CEGARPipeline
 from dspark.engines.creator import CreatorEngine
 from dspark.engines.curator import CuratorEngine
@@ -71,24 +72,27 @@ def abs_val(x: int) -> int:
 """
 
 
-def test_cegar_pipeline_end_to_end_mock():
-    import asyncio
+class TestCegarMock(unittest.TestCase):
+    def test_cegar_pipeline_end_to_end_mock(self):
+        async def _runner():
+            pipeline = CEGARPipeline(
+                creator=MockCreator(),
+                curator=MockCurator(),
+                refiner=MockRefiner(),
+                max_iterations=3,
+            )
 
-    async def _runner():
-        pipeline = CEGARPipeline(
-            creator=MockCreator(),
-            curator=MockCurator(),
-            refiner=MockRefiner(),
-            max_iterations=3,
-        )
+            final_state = await pipeline.execute(
+                user_spec="Implement absolute value function that guarantees non-negative output"
+            )
 
-        final_state = await pipeline.execute(
-            user_spec="Implement absolute value function that guarantees non-negative output"
-        )
+            # Must converge to APPROVED after 1 refinement pass
+            self.assertEqual(final_state.verdict, VerdictEnum.APPROVED)
+            self.assertIn("return -x if x < 0 else x", final_state.current_draft or "")
+            self.assertGreaterEqual(len(final_state.history), 2)
 
-        # Must converge to APPROVED after 1 refinement pass
-        assert final_state.verdict == VerdictEnum.APPROVED
-        assert "return -x if x < 0 else x" in (final_state.current_draft or "")
-        assert len(final_state.history) >= 2  # Iteration 0 (falsified) + Iteration 1 (approved)
+        asyncio.run(_runner())
 
-    asyncio.run(_runner())
+
+if __name__ == "__main__":
+    unittest.main()

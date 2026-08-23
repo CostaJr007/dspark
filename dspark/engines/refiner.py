@@ -9,12 +9,25 @@ import logging
 import re
 from typing import List, Optional
 
-import litellm
-
 from ..config import config
 from ..state import CounterExample, IOContract
 
 logger = logging.getLogger("dspark.refiner")
+
+
+def _get_litellm():
+    import sys
+    import typing
+    if sys.version_info < (3, 11):
+        try:
+            import typing_extensions
+            for attr in ("NotRequired", "Required", "Self", "TypeAlias", "assert_never", "dataclass_transform"):
+                if hasattr(typing_extensions, attr) and not hasattr(typing, attr):
+                    setattr(typing, attr, getattr(typing_extensions, attr))
+        except Exception:
+            pass
+    import litellm
+    return litellm
 
 REFINER_SYSTEM_PROMPT = """
 You are a Surgical Code Refiner operating under formal Counterexample-Guided Abstraction Refinement (CEGAR).
@@ -83,7 +96,8 @@ class RefinerEngine:
         ]
 
         try:
-            response = await litellm.acompletion(
+            llm = _get_litellm()
+            response = await llm.acompletion(
                 model=self.model,
                 messages=messages,
                 temperature=self.temperature,

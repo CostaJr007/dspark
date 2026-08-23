@@ -3,6 +3,19 @@ DSpark - Formal Dual-Engine CEGAR & Adversarial Verification Platform.
 High-Throughput Code Generation (Creator) + Epistemically-Isolated Adversarial Verification (Curator & Sandbox).
 """
 
+import sys
+import typing
+
+# Python 3.9/3.10 compatibility polyfill for third-party libraries (e.g. litellm)
+if sys.version_info < (3, 11):
+    try:
+        import typing_extensions
+        for attr in ("NotRequired", "Required", "Self", "TypeAlias", "assert_never", "dataclass_transform"):
+            if hasattr(typing_extensions, attr) and not hasattr(typing, attr):
+                setattr(typing, attr, getattr(typing_extensions, attr))
+    except Exception:
+        pass
+
 __version__ = "0.2.0"
 __author__ = "Adeilson Costa (CostaJr007)"
 
