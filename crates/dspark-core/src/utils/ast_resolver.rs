@@ -53,7 +53,15 @@ impl AstResolver {
             fn_call_re: Regex::new(r"\b([a-zA-Z_0-9]+)\s*\(").unwrap(),
         }
     }
+}
 
+impl Default for AstResolver {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AstResolver {
     /// Resolves code blocks into a causal dependency graph
     pub fn resolve(&self, code_blocks: &[CodeBlock]) -> (DependencyGraph, bool) {
         let mut graph = DiGraph::new();

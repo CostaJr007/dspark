@@ -11,6 +11,9 @@ use std::sync::OnceLock;
 
 static TOOL_JSON_RE: OnceLock<Regex> = OnceLock::new();
 
+pub type ToolCallHandler<'a> = &'a dyn Fn(&str, &Value);
+pub type ToolResultHandler<'a> = &'a dyn Fn(&ToolResult);
+
 pub struct SparkAgent {
     pub working_dir: PathBuf,
     client: ModelClient,
@@ -35,12 +38,15 @@ impl SparkAgent {
     pub async fn execute_step(
         &self,
         user_prompt: &str,
-        on_tool_call: Option<&dyn Fn(&str, &Value)>,
-        on_tool_result: Option<&dyn Fn(&ToolResult)>,
+        on_tool_call: Option<ToolCallHandler<'_>>,
+        on_tool_result: Option<ToolResultHandler<'_>>,
         max_iterations: usize,
     ) -> Result<String, ClientError> {
         let mut history = format!("Workspace: {:?}\n\nRequest: {}", self.working_dir, user_prompt);
         let mut last = String::new();
+        let re = TOOL_JSON_RE.get_or_init(|| {
+            Regex::new(r"(?s)```json\s*(\{.*?\})\s*```").expect("tool json")
+        });
 
         for _ in 0..max_iterations {
             let response = self
@@ -49,9 +55,6 @@ impl SparkAgent {
                 .await?;
             last = response.clone();
 
-            let re = TOOL_JSON_RE.get_or_init(|| {
-                Regex::new(r"(?s)```json\s*(\{.*?\})\s*```").expect("tool json")
-            });
             let Some(caps) = re.captures(&response) else {
                 return Ok(response);
             };

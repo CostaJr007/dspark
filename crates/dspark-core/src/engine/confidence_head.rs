@@ -31,11 +31,15 @@ impl ConfidenceHead {
             verification_threshold,
         }
     }
+}
 
-    pub fn default() -> Self {
+impl Default for ConfidenceHead {
+    fn default() -> Self {
         Self::new(0.85)
     }
+}
 
+impl ConfidenceHead {
     /// Estimates confidence scores across all blocks of a trajectory
     pub fn estimate_confidence(&self, trajectory: &DraftTrajectory) -> Vec<BlockConfidence> {
         trajectory

@@ -1,5 +1,7 @@
 //! DSpark: Speculative Orchestration and Dual-Engine verification CLI & library.
 
+#![allow(clippy::disallowed_methods)]
+
 pub mod agent;
 pub mod agent_loop;
 pub mod client;

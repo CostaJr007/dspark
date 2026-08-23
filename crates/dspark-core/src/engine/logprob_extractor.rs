@@ -32,7 +32,15 @@ impl LogprobExtractor {
     pub fn new() -> Self {
         Self
     }
+}
 
+impl Default for LogprobExtractor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl LogprobExtractor {
     /// Extracts verification metrics and fine-grained rewards from token logprob distribution
     pub fn analyze(&self, text_response: &str, logprobs: &[TokenLogprob]) -> VerificationResult {
         let entropy = self.calculate_entropy(logprobs);

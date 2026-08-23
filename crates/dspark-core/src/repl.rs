@@ -57,7 +57,7 @@ impl Default for ReplState {
     }
 }
 
-fn paint<'a>(theme: ThemeMode, s: &'a str) -> ColoredString {
+fn paint(theme: ThemeMode, s: &str) -> ColoredString {
     match theme {
         ThemeMode::Bloomberg => s.yellow().bold(),
         ThemeMode::Cyan => s.cyan().bold(),

@@ -138,7 +138,7 @@ impl PivotTournament {
         let mut ranked: Vec<(usize, usize)> = (0..total_n)
             .map(|idx| (idx, *wins.get(&idx).unwrap_or(&0)))
             .collect();
-        ranked.sort_by(|a, b| b.1.cmp(&a.1));
+        ranked.sort_by_key(|a| std::cmp::Reverse(a.1));
 
         ranked.into_iter().take(k).map(|(idx, _)| idx).collect()
     }

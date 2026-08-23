@@ -25,11 +25,15 @@ impl CostScheduler {
             cost_per_verification,
         }
     }
+}
 
-    pub fn default() -> Self {
+impl Default for CostScheduler {
+    fn default() -> Self {
         Self::new(20, 0.002) // Max 20 calls, ~$0.002 per deepseek call
     }
+}
 
+impl CostScheduler {
     /// Schedules blocks for remote verification using budget-aware pruning
     pub fn schedule_verification(&self, confidences: &[BlockConfidence]) -> VerificationPlan {
         let total_blocks = confidences.len();

@@ -232,8 +232,7 @@ fn parse_duckduckgo(body: &str, query: &str, max_results: usize) -> Vec<SearchRe
 
     let mut results = Vec::new();
     let n = titles.len().min(max_results);
-    for i in 0..n {
-        let (raw_href, raw_title) = &titles[i];
+    for (i, (raw_href, raw_title)) in titles.iter().take(n).enumerate() {
         let raw_snippet = snippets.get(i).map(String::as_str).unwrap_or("");
         let clean_title = decode_entities(tag_strip().replace_all(raw_title, "").trim());
         let clean_snippet = decode_entities(tag_strip().replace_all(raw_snippet, "").trim());

@@ -1,4 +1,4 @@
-﻿//! Spec-visible oracle: doctests and helpers from the prompt, never hidden tests.
+//! Spec-visible oracle: doctests and helpers from the prompt, never hidden tests.
 
 use serde::Deserialize;
 use std::fs;
@@ -70,18 +70,17 @@ pub fn run_python_spec_oracle(code: &str, specification: &str) -> Vec<OracleFail
             message: "failed to write oracle temp files".into(),
         }];
     }
-    let runner = format!(
-        r#"# -*- coding: utf-8 -*-
+    let runner = r#"# -*- coding: utf-8 -*-
 import doctest, json, sys, traceback
 code_path, spec_path = sys.argv[1], sys.argv[2]
 code = open(code_path, encoding="utf-8").read()
 spec = open(spec_path, encoding="utf-8").read()
-ns = {{}}
+ns = {}
 failures = []
 try:
     exec(compile(code, "<candidate>", "exec"), ns)
 except Exception as e:
-    failures.append({{"kind":"exec","input":"","expected":"","actual":"","message":traceback.format_exc(limit=2)}})
+    failures.append({"kind":"exec","input":"","expected":"","actual":"","message":traceback.format_exc(limit=2)})
     print(json.dumps(failures))
     sys.exit(0)
 
@@ -93,7 +92,7 @@ for name, obj in list(ns.items()):
     for t in finder.find(obj, name, globs=dict(ns)):
         nfail, nrun = runner.run(t, out=lambda s: None)
         if nfail:
-            failures.append({{"kind":"doctest","input":name,"expected":"docstring examples","actual":"failed","message":"%s docstring examples failed" % name}})
+            failures.append({"kind":"doctest","input":name,"expected":"docstring examples","actual":"failed","message":"%s docstring examples failed" % name})
 
 # Spec-visible encode/decode roundtrip when both helpers appear in the prompt.
 enc = next((v for k,v in ns.items() if k.startswith("encode_") and callable(v)), None)
@@ -103,14 +102,13 @@ if enc and dec:
         try:
             got = dec(enc(s))
             if got != s:
-                failures.append({{"kind":"roundtrip","input":repr(s),"expected":repr(s),"actual":repr(got),"message":"decode(encode(s)) != s"}})
+                failures.append({"kind":"roundtrip","input":repr(s),"expected":repr(s),"actual":repr(got),"message":"decode(encode(s)) != s"})
                 break
         except Exception as e:
-            failures.append({{"kind":"roundtrip","input":repr(s),"expected":repr(s),"actual":str(e),"message":"decode(encode(s)) raised"}})
+            failures.append({"kind":"roundtrip","input":repr(s),"expected":repr(s),"actual":str(e),"message":"decode(encode(s)) raised"})
             break
 print(json.dumps(failures))
-"#
-    );
+"#;
     if fs::write(&runner_path, runner).is_err() {
         let _ = fs::remove_file(&code_path);
         let _ = fs::remove_file(&spec_path);

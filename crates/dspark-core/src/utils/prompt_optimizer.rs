@@ -9,7 +9,15 @@ impl PromptOptimizer {
     pub fn new() -> Self {
         Self
     }
+}
 
+impl Default for PromptOptimizer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PromptOptimizer {
     /// Generates cache-friendly trajectory comparison prompt
     pub fn generate_comparison_prompt(
         &self,
