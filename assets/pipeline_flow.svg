@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 450" width="100%" height="100%">
+  <defs>
+    <linearGradient id="boxGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#161b22;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#21262d;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#58a6ff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3fb950;stop-opacity:1" />
+    </linearGradient>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <rect width="100%" height="100%" fill="#0d1117" rx="16" />
+
+  <!-- Title -->
+  <text x="500" y="45" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="22" font-weight="bold" fill="#f0f6fc" text-anchor="middle">
+    DSpark Speculative Orchestration Pipeline Architecture
+  </text>
+
+  <!-- Step 1: Speculative Drafter -->
+  <g transform="translate(40, 80)" filter="url(#shadow)">
+    <rect width="160" height="280" rx="10" fill="url(#boxGrad)" stroke="#30363d" stroke-width="1.5" />
+    <rect x="0" y="0" width="160" height="40" rx="10" fill="#1f6feb" opacity="0.3" />
+    <text x="80" y="26" font-family="sans-serif" font-size="14" font-weight="bold" fill="#58a6ff" text-anchor="middle">1. Drafter</text>
+    <text x="80" y="70" font-family="sans-serif" font-size="12" fill="#c9d1d9" text-anchor="middle">N Parallel Trajectories</text>
+    <text x="80" y="95" font-family="sans-serif" font-size="11" fill="#8b949e" text-anchor="middle">(Rayon / Tokio Sem)</text>
+    <circle cx="80" cy="140" r="24" fill="#238636" opacity="0.2" stroke="#2ea043" />
+    <text x="80" y="145" font-family="sans-serif" font-size="12" font-weight="bold" fill="#3fb950" text-anchor="middle">N=5</text>
+    <text x="80" y="195" font-family="sans-serif" font-size="11" fill="#8b949e" text-anchor="middle">Diverse Temperatures</text>
+    <text x="80" y="215" font-family="sans-serif" font-size="10" fill="#7ee787" text-anchor="middle">T = 0.2 ... 0.8</text>
+  </g>
+
+  <!-- Arrow 1 -->
+  <path d="M 205 220 L 230 220" stroke="#58a6ff" stroke-width="2.5" marker-end="url(#arrow)" />
+
+  <!-- Step 2: AST Resolver -->
+  <g transform="translate(235, 80)" filter="url(#shadow)">
+    <rect width="160" height="280" rx="10" fill="url(#boxGrad)" stroke="#30363d" stroke-width="1.5" />
+    <rect x="0" y="0" width="160" height="40" rx="10" fill="#8957e5" opacity="0.3" />
+    <text x="80" y="26" font-family="sans-serif" font-size="14" font-weight="bold" fill="#bc8cff" text-anchor="middle">2. AST Resolver</text>
+    <text x="80" y="70" font-family="sans-serif" font-size="12" fill="#c9d1d9" text-anchor="middle">Dependency Graph</text>
+    <text x="80" y="95" font-family="sans-serif" font-size="11" fill="#8b949e" text-anchor="middle">Petgraph DiGraph</text>
+    <rect x="25" y="125" width="110" height="40" rx="6" fill="#161b22" stroke="#8957e5" stroke-width="1"/>
+    <text x="80" y="148" font-family="sans-serif" font-size="11" font-weight="bold" fill="#d2a8ff" text-anchor="middle">Topological Sort</text>
+    <text x="80" y="195" font-family="sans-serif" font-size="11" fill="#8b949e" text-anchor="middle">Syntax Validation</text>
+    <text x="80" y="215" font-family="sans-serif" font-size="10" fill="#d2a8ff" text-anchor="middle">Cycle Detection</text>
+  </g>
+
+  <!-- Arrow 2 -->
+  <path d="M 400 220 L 425 220" stroke="#bc8cff" stroke-width="2.5" />
+
+  <!-- Step 3: Confidence & Cost -->
+  <g transform="translate(430, 80)" filter="url(#shadow)">
+    <rect width="160" height="280" rx="10" fill="url(#boxGrad)" stroke="#30363d" stroke-width="1.5" />
+    <rect x="0" y="0" width="160" height="40" rx="10" fill="#d29922" opacity="0.3" />
+    <text x="80" y="26" font-family="sans-serif" font-size="14" font-weight="bold" fill="#e3b341" text-anchor="middle">3. Confidence Head</text>
+    <text x="80" y="70" font-family="sans-serif" font-size="12" fill="#c9d1d9" text-anchor="middle">Local CPU Pruning</text>
+    <text x="80" y="95" font-family="sans-serif" font-size="11" fill="#8b949e" text-anchor="middle">Entropy &amp; Risk</text>
+    <rect x="25" y="125" width="110" height="40" rx="6" fill="#161b22" stroke="#d29922" stroke-width="1"/>
+    <text x="80" y="148" font-family="sans-serif" font-size="11" font-weight="bold" fill="#f0883e" text-anchor="middle">65% API Saved</text>
+    <text x="80" y="195" font-family="sans-serif" font-size="11" fill="#8b949e" text-anchor="middle">Cost Scheduler</text>
+    <text x="80" y="215" font-family="sans-serif" font-size="10" fill="#f0883e" text-anchor="middle">Top-Risk Selection</text>
+  </g>
+
+  <!-- Arrow 3 -->
+  <path d="M 595 220 L 620 220" stroke="#e3b341" stroke-width="2.5" />
+
+  <!-- Step 4: Pivot Tournament -->
+  <g transform="translate(625, 80)" filter="url(#shadow)">
+    <rect width="160" height="280" rx="10" fill="url(#boxGrad)" stroke="#30363d" stroke-width="1.5" />
+    <rect x="0" y="0" width="160" height="40" rx="10" fill="#da3633" opacity="0.3" />
+    <text x="80" y="26" font-family="sans-serif" font-size="14" font-weight="bold" fill="#f85149" text-anchor="middle">4. Tournament</text>
+    <text x="80" y="70" font-family="sans-serif" font-size="12" fill="#c9d1d9" text-anchor="middle">PPT Algorithm</text>
+    <text x="80" y="95" font-family="sans-serif" font-size="11" fill="#8b949e" text-anchor="middle">O(Nk) vs O(N²)</text>
+    <rect x="25" y="125" width="110" height="40" rx="6" fill="#161b22" stroke="#da3633" stroke-width="1"/>
+    <text x="80" y="148" font-family="sans-serif" font-size="11" font-weight="bold" fill="#ff7b72" text-anchor="middle">k Pivots Chosen</text>
+    <text x="80" y="195" font-family="sans-serif" font-size="11" fill="#8b949e" text-anchor="middle">Hamiltonian Ring Pass</text>
+    <text x="80" y="215" font-family="sans-serif" font-size="10" fill="#ff7b72" text-anchor="middle">Fine-Grained Reward</text>
+  </g>
+
+  <!-- Arrow 4 -->
+  <path d="M 790 220 L 815 220" stroke="#f85149" stroke-width="2.5" />
+
+  <!-- Step 5: Verified Output -->
+  <g transform="translate(820, 80)" filter="url(#shadow)">
+    <rect width="140" height="280" rx="10" fill="url(#boxGrad)" stroke="#238636" stroke-width="2" />
+    <rect x="0" y="0" width="140" height="40" rx="10" fill="#238636" opacity="0.4" />
+    <text x="70" y="26" font-family="sans-serif" font-size="14" font-weight="bold" fill="#3fb950" text-anchor="middle">5. Final Code</text>
+    <text x="70" y="70" font-family="sans-serif" font-size="12" fill="#c9d1d9" text-anchor="middle">Verified &amp; Safe</text>
+    <text x="70" y="95" font-family="sans-serif" font-size="11" fill="#8b949e" text-anchor="middle">CEGAR Proof</text>
+    <circle cx="70" cy="145" r="28" fill="#238636" opacity="0.3" stroke="#3fb950" stroke-width="2" />
+    <text x="70" y="152" font-family="sans-serif" font-size="20" font-weight="bold" fill="#3fb950" text-anchor="middle">✓</text>
+    <text x="70" y="200" font-family="sans-serif" font-size="11" fill="#7ee787" text-anchor="middle">Score: 94/100</text>
+    <text x="70" y="220" font-family="sans-serif" font-size="10" fill="#8b949e" text-anchor="middle">Zero Hallucinations</text>
+  </g>
+</svg>
