@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "dspark-core"
 version = "0.1.0"
 edition = "2021"
@@ -30,3 +30,7 @@ urlencoding = "2.1"
 thiserror = "1.0"
 dirs = "5.0"
 toml = "0.8"
+rayon = "1.10"
+petgraph = "0.6"
+statrs = "0.17"
+ordered-float = "4.2"

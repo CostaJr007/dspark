@@ -97,6 +97,15 @@ enum Commands {
         /// Skip live web research before generating
         #[arg(long = "no-research")]
         no_research: bool,
+        /// Enable speculative multi-trajectory orchestration with PPT tournament
+        #[arg(long)]
+        speculative: bool,
+        /// Number of parallel draft trajectories (default: 3)
+        #[arg(long, default_value_t = 3)]
+        trajectories: usize,
+        /// Number of tournament pivots (default: 2)
+        #[arg(long, default_value_t = 2)]
+        pivots: usize,
     },
     /// Scan, list and test local offline LLMs (Ollama, LM Studio, vLLM)
     Local {
@@ -309,10 +318,82 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             generator,
             curator,
             no_research,
+            speculative,
+            trajectories,
+            pivots,
         }) => {
             let pair = DsparkPair::load();
             let generator = generator.unwrap_or_else(|| pair.creator.clone());
             let curator = curator.unwrap_or_else(|| pair.curator.clone());
+
+            if speculative {
+                println!(
+                    "{}",
+                    format!(
+                        "🚀 Speculative Orchestration: Drafter={} Verifier={} (N={}, Pivots={})",
+                        generator, curator, trajectories, pivots
+                    )
+                    .cyan()
+                    .bold()
+                );
+
+                // Stage 1: Parallel Speculative Drafting
+                println!("\n{}", format!("[1/4] Generating {} speculative trajectories in parallel...", trajectories).yellow());
+                let drafter = dspark::engine::SpeculativeDrafter::with_model(&generator, trajectories)?;
+                let raw_trajectories = drafter.generate_trajectories(&prompt).await;
+                let valid_trajectories = drafter.apply_sequential_module(raw_trajectories);
+                println!("  ✓ Obtained {} structurally valid AST trajectories", valid_trajectories.len());
+
+                if valid_trajectories.is_empty() {
+                    eprintln!("Error: No valid candidate trajectories generated.");
+                    return Ok(());
+                }
+
+                // Stage 2: Confidence Head & Local Complexity
+                println!("\n{}", "[2/4] Estimating local entropy & confidence scores...".yellow());
+                let conf_head = dspark::engine::ConfidenceHead::default();
+                let mut all_block_confs = Vec::new();
+                for (i, traj) in valid_trajectories.iter().enumerate() {
+                    let confs = conf_head.estimate_confidence(traj);
+                    let needs_verif = confs.iter().filter(|b| b.needs_verification).count();
+                    println!("  Trajectory #{}: {}/{} blocks require verification", i + 1, needs_verif, confs.len());
+                    all_block_confs.extend(confs);
+                }
+
+                // Stage 3: Cost-Aware Verification Scheduler
+                println!("\n{}", "[3/4] Running Cost-Aware Scheduler & pruning...".yellow());
+                let scheduler = dspark::engine::CostScheduler::default();
+                let plan = scheduler.schedule_verification(&all_block_confs);
+                println!(
+                    "  ✓ Scheduled {} verifications (Pruned {} blocks, Est. API cost: ${:.4}, Acceptance: {:.1}%)",
+                    plan.blocks_to_verify.len(),
+                    plan.pruned_blocks_count,
+                    plan.estimated_cost,
+                    plan.expected_acceptance_rate * 100.0
+                );
+
+                // Stage 4: Probabilistic Pivot Tournament (PPT)
+                println!("\n{}", format!("[4/4] Conducting Probabilistic Pivot Tournament (k={} pivots)...", pivots).yellow());
+                let tournament = dspark::engine::PivotTournament::with_model(&curator, pivots)?;
+                let tourney_res = tournament.run_tournament(&valid_trajectories, &prompt).await;
+                let winner_idx = tourney_res.best_trajectory_idx;
+                let winner = &valid_trajectories[winner_idx];
+
+                println!("\n{}", "=== 🏆 SPECULATIVE ORCHESTRATION WINNER ===".green().bold());
+                println!("Winning Trajectory: Trajectory #{}", winner_idx + 1);
+                println!("Total Tournament Comparisons: {}", tourney_res.total_comparisons);
+                println!("Rankings (Win Mass): {:?}", tourney_res.rankings);
+
+                if let Some(dest) = out {
+                    fs::write(&dest, &winner.full_code)?;
+                    println!("Final verified code written to {}", dest);
+                } else {
+                    println!("\nFinal Verified Implementation:\n{}", winner.full_code);
+                }
+
+                return Ok(());
+            }
+
             println!(
                 "{}",
                 format!("Pipeline creator={} curator={}", generator, curator).dimmed()
