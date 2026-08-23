@@ -22,13 +22,17 @@ pub mod utils;
 pub mod verifier;
 
 pub use agent::DSparkAgent;
-pub use client::{DeepSeekClient, GeminiClient, LocalLLMClient, ModelClient, OpenAIClient};
+pub use client::{
+    spawn_mock_chat_server, DeepSeekClient, GeminiClient, LocalLLMClient, ModelClient, OpenAIClient,
+    ScriptedClient,
+};
 pub use cost::TokenUsage;
 pub use curator::DeepSeekCurator;
 pub use engine::{
-    BlockConfidence, ConfidenceHead, CostScheduler, DraftTrajectory, LogprobExtractor,
-    PivotTournament, RiskLevel, SpeculativeDrafter, TokenLogprob, TournamentResult,
-    VerificationPlan, VerificationResult, VerificationVerdict,
+    BlockConfidence, ConfidenceHead, CostScheduler, DraftTrajectory, EscalationContext,
+    EscalationDecision, EscalationPolicy, EscalationReason, LogprobExtractor, PivotTournament,
+    RiskLevel, SpeculativeDrafter, TokenLogprob, TournamentResult, VerificationPlan,
+    VerificationResult, VerificationVerdict,
 };
 pub use generator::GeminiGenerator;
 pub use pair::DsparkPair;

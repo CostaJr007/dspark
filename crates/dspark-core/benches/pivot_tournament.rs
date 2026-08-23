@@ -1,62 +1,58 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use dspark::client::{spawn_mock_chat_server, LocalLLMClient, ModelClient};
+use dspark::engine::{tournament_comparison_count, DraftTrajectory, PivotTournament};
+use dspark::utils::ast_resolver::CodeBlock;
+use std::sync::Arc;
 
-fn bench_pivot_tournament_scaling(c: &mut Criterion) {
-    let mut group = c.benchmark_group("pivot_tournament_scaling");
+fn mk_trajectories(n: usize) -> Vec<DraftTrajectory> {
+    (0..n)
+        .map(|i| DraftTrajectory {
+            id: i,
+            full_code: format!("fn candidate_{}() {{ {} }}", i, i),
+            code_blocks: vec![CodeBlock {
+                function_name: format!("candidate_{}", i),
+                code: format!("fn candidate_{}() {{ {} }}", i, i),
+                line_count: 1,
+            }],
+            confidence_score: 0.8,
+            ast_valid: true,
+        })
+        .collect()
+}
 
-    // N = number of candidate trajectories
-    // k = 3 pivots
-    let k = 3;
+/// End-to-end benchmark: runs the FULL PPT algorithm (ring pass + pivot
+/// tournament) through the real HTTP client path against a local mock
+/// OpenAI-compatible server. Every iteration performs exactly
+/// `N + (N-k)*k + C(k,2)` network round trips, so the measurement reflects the
+/// actual orchestration cost instead of precomputed arithmetic.
+fn bench_pivot_tournament_e2e(c: &mut Criterion) {
+    let base_url = spawn_mock_chat_server(Arc::new(|_| "{\"winner\": \"A\"}".to_string()));
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let k = 3usize;
 
-    for n in [3, 5, 10, 20, 50, 100].iter() {
-        let onk_cost = *n + (*n - k) * k + k * (k - 1) / 2;
-        let on2_cost = *n * (*n - 1) / 2;
-
+    let mut group = c.benchmark_group("pivot_tournament_e2e");
+    // N is capped at 20 here because each iteration performs N + (N-k)*k + C(k,2)
+    // sequentializable HTTP round trips through a single-threaded mock server.
+    for n in [3usize, 5, 10, 20].iter() {
+        let expected = tournament_comparison_count(*n, k);
         group.bench_with_input(
-            BenchmarkId::new("O(Nk)", format!("N={}", n)),
+            BenchmarkId::new("full_tournament", format!("N={}", n)),
             n,
             |b, &_n| {
                 b.iter(|| {
-                    let total_comparisons = onk_cost;
-                    black_box(total_comparisons)
-                });
-            },
-        );
-
-        group.bench_with_input(
-            BenchmarkId::new("O(N2)_baseline", format!("N={}", n)),
-            n,
-            |b, &_n| {
-                b.iter(|| {
-                    let total_comparisons = on2_cost;
-                    black_box(total_comparisons)
+                    let client =
+                        ModelClient::Local(LocalLLMClient::new(Some(&base_url), Some("mock")).unwrap());
+                    let tournament = PivotTournament::new(client, k);
+                    let trajs = mk_trajectories(*n);
+                    let res = rt.block_on(tournament.run_tournament(&trajs, "Check correctness"));
+                    assert_eq!(res.total_comparisons, black_box(expected));
+                    res.best_trajectory_idx
                 });
             },
         );
     }
-
     group.finish();
 }
 
-fn bench_pivot_cost_savings(c: &mut Criterion) {
-    let mut group = c.benchmark_group("pivot_vs_round_robin");
-
-    for n in [10, 20, 50, 100].iter() {
-        let k = 3;
-        let onk = *n + (*n - k) * k + k * (k - 1) / 2;
-        let on2 = *n * (*n - 1) / 2;
-        let savings = 1.0 - (onk as f64 / on2 as f64);
-
-        group.bench_with_input(
-            BenchmarkId::new("savings", format!("N={}", n)),
-            n,
-            |b, _| {
-                b.iter(|| black_box(savings));
-            },
-        );
-    }
-
-    group.finish();
-}
-
-criterion_group!(benches, bench_pivot_tournament_scaling, bench_pivot_cost_savings);
+criterion_group!(benches, bench_pivot_tournament_e2e);
 criterion_main!(benches);

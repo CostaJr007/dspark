@@ -3,6 +3,8 @@
 use crate::cost::{extract_usage, TokenUsage};
 use serde::Serialize;
 use std::env;
+use std::io::{Read, Write};
+use std::net::TcpListener;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -623,12 +625,125 @@ impl LocalLLMClient {
     }
 }
 
+/// Deterministic scripted LLM client for tests, benches and offline harness runs.
+/// Never touches the network: answers are produced by the configured responder.
+pub struct ScriptedClient {
+    pub model: String,
+    responder: Arc<dyn Fn(&str) -> String + Send + Sync>,
+    calls: AtomicU64,
+}
+
+impl ScriptedClient {
+    pub fn new(model: &str, responder: impl Fn(&str) -> String + Send + Sync + 'static) -> Self {
+        Self {
+            model: model.to_string(),
+            responder: Arc::new(responder),
+            calls: AtomicU64::new(0),
+        }
+    }
+
+    /// Always declares candidate A the winner; deterministic tournaments.
+    pub fn always_a(model: &str) -> Self {
+        Self::new(model, |_| "{\"winner\": \"A\"}".to_string())
+    }
+
+    pub fn call_count(&self) -> u64 {
+        self.calls.load(Ordering::Relaxed)
+    }
+
+    pub async fn complete(
+        &self,
+        prompt: &str,
+        _system_prompt: Option<&str>,
+        _temperature: f32,
+        _json_format: bool,
+    ) -> Result<String, ClientError> {
+        self.calls.fetch_add(1, Ordering::Relaxed);
+        Ok((self.responder)(prompt))
+    }
+}
+
+fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack.windows(needle.len()).position(|w| w == needle)
+}
+
+fn header_value(headers: &[u8], name: &str) -> Option<usize> {
+    let text = std::str::from_utf8(headers).ok()?;
+    for line in text.split("\r\n") {
+        let mut parts = line.splitn(2, ':');
+        if parts.next()?.trim().eq_ignore_ascii_case(name) {
+            return parts.next()?.trim().parse().ok();
+        }
+    }
+    None
+}
+
+/// Spawns a minimal OpenAI-compatible chat-completions server on an ephemeral
+/// localhost port and returns its `/v1` base URL. Each response body is produced
+/// by `responder(request_body_json)`. Useful for offline end-to-end engine tests
+/// and benchmarks that must exercise the real HTTP path of the pipeline.
+pub fn spawn_mock_chat_server(responder: Arc<dyn Fn(&str) -> String + Send + Sync>) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock chat server");
+    let addr = listener.local_addr().expect("mock chat server addr");
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let mut stream = match stream {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            let mut buf: Vec<u8> = Vec::new();
+            let mut chunk = [0u8; 4096];
+            const HEADER_END: &[u8] = b"\r\n\r\n";
+            let mut body_start = None;
+            loop {
+                match stream.read(&mut chunk) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        buf.extend_from_slice(&chunk[..n]);
+                        if let Some(pos) = find_subsequence(&buf, HEADER_END) {
+                            body_start = Some(pos + HEADER_END.len());
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+            let payload = match body_start {
+                Some(start) => {
+                    let want = header_value(&buf[..start - HEADER_END.len()], "Content-Length");
+                    while let Some(len) = want {
+                        if buf.len() >= start + len {
+                            break;
+                        }
+                        match stream.read(&mut chunk) {
+                            Ok(0) | Err(_) => break,
+                            Ok(n) => buf.extend_from_slice(&chunk[..n]),
+                        }
+                    }
+                    String::from_utf8_lossy(&buf[start..]).to_string()
+                }
+                None => String::new(),
+            };
+            let response_payload = responder(&payload);
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                response_payload.len(),
+                response_payload
+            );
+            let _ = stream.write_all(response.as_bytes());
+            let _ = stream.flush();
+        }
+    });
+    format!("http://{}/v1", addr)
+}
+
 /// Unified client selected by a model identifier (`gpt-4o-mini`, `local:qwen2.5-coder:1.5b`, ...).
 pub enum ModelClient {
     DeepSeek(DeepSeekClient),
     OpenAI(OpenAIClient),
     Gemini(GeminiClient),
     Local(LocalLLMClient),
+    Scripted(ScriptedClient),
 }
 
 impl ModelClient {
@@ -636,6 +751,10 @@ impl ModelClient {
         let spec = spec.trim();
         let lower = spec.to_lowercase();
 
+        if lower == "mock" || lower.starts_with("mock:") {
+            let model_name = spec.split_once(':').map(|(_, m)| m).unwrap_or("mock");
+            return Ok(Self::Scripted(ScriptedClient::always_a(model_name)));
+        }
         if lower.starts_with("local:")
             || lower.starts_with("ollama:")
             || lower.starts_with("lmstudio:")
@@ -668,6 +787,7 @@ impl ModelClient {
             Self::OpenAI(c) => &c.model,
             Self::Gemini(c) => &c.model,
             Self::Local(c) => &c.model,
+            Self::Scripted(c) => &c.model,
         }
     }
 
@@ -677,6 +797,7 @@ impl ModelClient {
             Self::OpenAI(c) => c.usage.snapshot(),
             Self::Gemini(c) => c.usage.snapshot(),
             Self::Local(c) => c.usage.snapshot(),
+            Self::Scripted(_) => TokenUsage::default(),
         }
     }
 
@@ -708,6 +829,10 @@ impl ModelClient {
                     }
                     Err(e) => Err(e),
                 }
+            }
+            Self::Scripted(c) => {
+                c.complete(prompt, system_prompt, temperature, json_format)
+                    .await
             }
         }
     }
@@ -749,5 +874,22 @@ mod tests {
 data: {\"choices\":[{\"delta\":{\"content\":\"lo\"}}]}\n\
 data: [DONE]\n";
         assert_eq!(parse_chat_completion_text(raw).unwrap(), "Hello");
+    }
+
+    #[tokio::test]
+    async fn scripted_client_counts_calls_and_answers() {
+        let c = super::ModelClient::from_spec("mock:judge-x").unwrap();
+        assert_eq!(c.model_name(), "judge-x");
+        let out = c.complete("p", None, 0.0, false).await.unwrap();
+        assert!(out.contains("\"winner\": \"A\""));
+        assert_eq!(c.usage().total(), 0);
+    }
+
+    #[test]
+    fn spawns_mock_chat_server() {
+        let url = super::spawn_mock_chat_server(std::sync::Arc::new(|_| {
+            "{\"winner\": \"A\"}".to_string()
+        }));
+        assert!(url.starts_with("http://127.0.0.1:"));
     }
 }

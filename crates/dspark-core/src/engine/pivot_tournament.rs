@@ -16,6 +16,27 @@ pub struct TournamentResult {
     pub total_comparisons: usize,
 }
 
+impl TournamentResult {
+    /// True when the top two win rates are within `epsilon`, i.e. the winner
+    /// is statistically ambiguous and flagship arbitration may be warranted.
+    pub fn is_tie(&self, epsilon: f64) -> bool {
+        let mut rates: Vec<f64> = self.rankings.iter().map(|(_, r)| *r).collect();
+        rates.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
+        match (rates.first(), rates.get(1)) {
+            (Some(top), Some(second)) => top - second <= epsilon,
+            _ => false,
+        }
+    }
+}
+
+/// Exact comparison count of the implemented PPT algorithm:
+/// ring pass (N) + non-pivots vs pivots ((N-k)*k) + pivots vs pivots (C(k,2)).
+/// Mirrors the runtime pivot clamp `k.clamp(1, (n / 2).max(1))`.
+pub fn tournament_comparison_count(n: usize, k_requested: usize) -> usize {
+    let k = k_requested.clamp(1, (n / 2).max(1));
+    n + n.saturating_sub(k) * k + k * (k.saturating_sub(1)) / 2
+}
+
 pub struct PivotTournament {
     client: Arc<ModelClient>,
     n_pivots: usize,
@@ -222,5 +243,36 @@ impl PivotTournament {
             .collect();
 
         (rankings, total_comps)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_tie_detects_ambiguous_winners() {
+        let clear = TournamentResult {
+            best_trajectory_idx: 0,
+            rankings: vec![(0, 0.9), (1, 0.4), (2, 0.3)],
+            total_comparisons: 34,
+        };
+        assert!(!clear.is_tie(0.05));
+
+        let tied = TournamentResult {
+            best_trajectory_idx: 0,
+            rankings: vec![(0, 0.51), (1, 0.49), (2, 0.2)],
+            total_comparisons: 34,
+        };
+        assert!(tied.is_tie(0.05));
+    }
+
+    #[test]
+    fn comparison_count_formula_matches_documented_small_cases() {
+        // Requested k is clamped at runtime for small N; the formula mirrors it.
+        assert_eq!(tournament_comparison_count(5, 2), 12);
+        assert_eq!(tournament_comparison_count(10, 3), 34);
+        assert_eq!(tournament_comparison_count(20, 3), 74);
+        assert_eq!(tournament_comparison_count(3, 3), 5); // k clamped to 1
     }
 }

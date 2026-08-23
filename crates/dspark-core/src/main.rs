@@ -106,6 +106,10 @@ enum Commands {
         /// Number of tournament pivots (default: 2)
         #[arg(long, default_value_t = 2)]
         pivots: usize,
+        /// Model used for tournament ranking comparisons (default: creator/cheap tier).
+        /// Flagship curator is reserved for the escalation/refinement stage.
+        #[arg(long)]
+        ranking_model: Option<String>,
     },
     /// Scan, list and test local offline LLMs (Ollama, LM Studio, vLLM)
     Local {
@@ -321,6 +325,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             speculative,
             trajectories,
             pivots,
+            ranking_model,
         }) => {
             let pair = DsparkPair::load();
             let generator = generator.unwrap_or_else(|| pair.creator.clone());
@@ -337,8 +342,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .bold()
                 );
 
+                // Tiered model routing: cheap tier drafts AND ranks; flagship only refines.
+                let ranking_spec = ranking_model.unwrap_or_else(|| generator.clone());
+                println!("  Ranking comparisons via: {} | Flagship refinement via: {}", ranking_spec, curator);
+
                 // Stage 1: Parallel Speculative Drafting
-                println!("\n{}", format!("[1/4] Generating {} speculative trajectories in parallel...", trajectories).yellow());
+                println!("\n{}", format!("[1/5] Generating {} speculative trajectories in parallel...", trajectories).yellow());
                 let drafter = dspark::engine::SpeculativeDrafter::with_model(&generator, trajectories)?;
                 let raw_trajectories = drafter.generate_trajectories(&prompt).await;
                 let valid_trajectories = drafter.apply_sequential_module(raw_trajectories);
@@ -350,7 +359,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 // Stage 2: Confidence Head & Local Complexity
-                println!("\n{}", "[2/4] Estimating local entropy & confidence scores...".yellow());
+                println!("\n{}", "[2/5] Estimating local entropy & confidence scores...".yellow());
                 let conf_head = dspark::engine::ConfidenceHead::default();
                 let mut all_block_confs = Vec::new();
                 for (i, traj) in valid_trajectories.iter().enumerate() {
@@ -361,7 +370,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 // Stage 3: Cost-Aware Verification Scheduler
-                println!("\n{}", "[3/4] Running Cost-Aware Scheduler & pruning...".yellow());
+                println!("\n{}", "[3/5] Running Cost-Aware Scheduler & pruning...".yellow());
                 let scheduler = dspark::engine::CostScheduler::default();
                 let plan = scheduler.schedule_verification(&all_block_confs);
                 println!(
@@ -373,8 +382,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 );
 
                 // Stage 4: Probabilistic Pivot Tournament (PPT)
-                println!("\n{}", format!("[4/4] Conducting Probabilistic Pivot Tournament (k={} pivots)...", pivots).yellow());
-                let tournament = dspark::engine::PivotTournament::with_model(&curator, pivots)?;
+                println!("\n{}", format!("[4/5] Conducting Probabilistic Pivot Tournament (k={} pivots) on ranking tier...", pivots).yellow());
+                let tournament = dspark::engine::PivotTournament::with_model(&ranking_spec, pivots)?;
                 let tourney_res = tournament.run_tournament(&valid_trajectories, &prompt).await;
                 let winner_idx = tourney_res.best_trajectory_idx;
                 let winner = &valid_trajectories[winner_idx];
@@ -384,12 +393,114 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("Total Tournament Comparisons: {}", tourney_res.total_comparisons);
                 println!("Rankings (Win Mass): {:?}", tourney_res.rankings);
 
+                // Stage 5: Flagship escalation policy (CEGAR refinement on residual hard cases)
+                println!("\n{}", "[5/5] Evaluating flagship escalation policy...".yellow());
+                let conf_head2 = dspark::engine::ConfidenceHead::default();
+                let winner_confs = conf_head2.estimate_confidence(winner);
+                let avg_confidence = if winner_confs.is_empty() {
+                    1.0
+                } else {
+                    winner_confs.iter().map(|b| b.confidence_score).sum::<f64>()
+                        / winner_confs.len() as f64
+                };
+                let winner_plan = dspark::engine::CostScheduler::default()
+                    .schedule_verification(&winner_confs);
+                let high_risk_blocks = winner_confs
+                    .iter()
+                    .filter(|b| matches!(b.risk_level, dspark::engine::RiskLevel::High))
+                    .count();
+                let unverified_high_risk = winner_confs
+                    .iter()
+                    .filter(|b| {
+                        matches!(b.risk_level, dspark::engine::RiskLevel::High)
+                            && !winner_plan.blocks_to_verify.contains(&b.block_id)
+                    })
+                    .count();
+
+                let policy = dspark::engine::EscalationPolicy::default();
+                let decision = policy.evaluate(&dspark::engine::EscalationContext {
+                    winner_confidence: avg_confidence,
+                    high_risk_blocks,
+                    unverified_high_risk,
+                    tournament_tie: tourney_res.is_tie(0.05),
+                    ast_valid: winner.ast_valid,
+                });
+                println!(
+                    "  Winner confidence: {:.3} | High-risk blocks: {} ({} unverified) | Tie: {}",
+                    avg_confidence,
+                    high_risk_blocks,
+                    unverified_high_risk,
+                    tourney_res.is_tie(0.05)
+                );
+                println!(
+                    "  Escalate to flagship curator: {} (reasons: {:?})",
+                    decision.escalated, decision.reasons
+                );
+
+                let mut final_code = winner.full_code.clone();
+                let mut refined_by_flagship = false;
+                if decision.escalated {
+                    if curator.starts_with("mock") || ranking_spec.starts_with("mock") {
+                        println!(
+                            "  {}",
+                            "Mock tier configured: skipping live flagship refinement (offline mode)."
+                                .dimmed()
+                        );
+                    } else {
+                        match DeepSeekCurator::with_model(&curator) {
+                            Ok(curator_engine) => {
+                                let feedback: Vec<String> =
+                                    decision.reasons.iter().map(|r| format!("- {:?}", r)).collect();
+                                println!(
+                                    "  Refining winner with flagship curator ({})...",
+                                    curator
+                                );
+                                match curator_engine
+                                    .refine(
+                                        &final_code,
+                                        &prompt,
+                                        Some(&feedback.join("\n")),
+                                        lang.as_deref(),
+                                    )
+                                    .await
+                                {
+                                    Ok(res) => {
+                                        final_code = res.refined_code;
+                                        refined_by_flagship = true;
+                                    }
+                                    Err(e) => eprintln!(
+                                        "  {}",
+                                        format!(
+                                            "Flagship refinement failed ({}); keeping tournament winner.",
+                                            e
+                                        )
+                                        .yellow()
+                                    ),
+                                }
+                            }
+                            Err(e) => eprintln!(
+                                "  {}",
+                                format!(
+                                    "Flagship curator unavailable ({}); keeping tournament winner.",
+                                    e
+                                )
+                                .yellow()
+                            ),
+                        }
+                    }
+                }
+
                 if let Some(dest) = out {
-                    fs::write(&dest, &winner.full_code)?;
+                    fs::write(&dest, &final_code)?;
                     println!("Final verified code written to {}", dest);
                 } else {
-                    println!("\nFinal Verified Implementation:\n{}", winner.full_code);
+                    println!("\nFinal Verified Implementation:\n{}", final_code);
                 }
+                println!(
+                    "\nRefined by flagship: {} | Tournament comparisons: {}",
+                    if refined_by_flagship { "yes" } else { "no" },
+                    tourney_res.total_comparisons
+                );
 
                 return Ok(());
             }
