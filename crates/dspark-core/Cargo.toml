@@ -18,6 +18,11 @@ path = "src/lib.rs"
 name = "dspark"
 path = "src/main.rs"
 
+[features]
+default = ["regex-ast"]
+regex-ast = []
+tree-sitter-ast = ["dep:tree-sitter", "dep:tree-sitter-rust", "dep:tree-sitter-python"]
+
 [dependencies]
 tokio = { version = "1.38", features = ["full"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip"] }
@@ -34,10 +39,21 @@ rayon = "1.10"
 petgraph = "0.6"
 statrs = "0.17"
 ordered-float = "4.2"
+tree-sitter = { version = "0.25", optional = true }
+tree-sitter-rust = { version = "0.23", optional = true }
+tree-sitter-python = { version = "0.23", optional = true }
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["async_tokio"] }
+criterion = { version = "0.5", features = ["async_tokio", "html_reports"] }
 
 [[bench]]
-name = "speculative_benchmarks"
+name = "pivot_tournament"
+harness = false
+
+[[bench]]
+name = "ast_resolver"
+harness = false
+
+[[bench]]
+name = "speculative_pipeline"
 harness = false

@@ -2,12 +2,12 @@
 //! Generates N trajectories in parallel and applies the Sequential Dependency Injection module.
 
 use crate::client::{ClientError, ModelClient};
-use crate::utils::ast_resolver::{AstResolver, CodeBlock};
+use crate::utils::ast_resolver::{create_resolver, CodeBlock, DependencyResolver};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DraftTrajectory {
     pub id: usize,
     pub full_code: String,
@@ -20,7 +20,7 @@ pub struct SpeculativeDrafter {
     client: Arc<ModelClient>,
     n_trajectories: usize,
     semaphore: Arc<Semaphore>,
-    resolver: AstResolver,
+    resolver: Box<dyn DependencyResolver>,
 }
 
 impl SpeculativeDrafter {
@@ -29,7 +29,16 @@ impl SpeculativeDrafter {
             client: Arc::new(client),
             n_trajectories,
             semaphore: Arc::new(Semaphore::new(n_trajectories.max(1))),
-            resolver: AstResolver::new(),
+            resolver: create_resolver(),
+        }
+    }
+
+    pub fn with_resolver(client: ModelClient, n_trajectories: usize, resolver: Box<dyn DependencyResolver>) -> Self {
+        Self {
+            client: Arc::new(client),
+            n_trajectories,
+            semaphore: Arc::new(Semaphore::new(n_trajectories.max(1))),
+            resolver,
         }
     }
 
@@ -60,7 +69,7 @@ impl SpeculativeDrafter {
         for handle in handles {
             if let Ok((id, Ok(raw_code))) = handle.await {
                 let blocks = self.resolver.split_into_blocks(&raw_code);
-                let (dep_graph, ast_valid) = self.resolver.resolve(&blocks);
+                let (dep_graph, ast_valid) = self.resolver.resolve(&blocks, "rust");
                 let ordered_blocks = dep_graph.topological_sort();
                 let full_code = if ordered_blocks.is_empty() {
                     raw_code

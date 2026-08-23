@@ -22,7 +22,7 @@ fn test_ast_resolver_topological_sort() {
         line_count: 1,
     };
 
-    let (dep_graph, is_valid) = resolver.resolve(&[block_main.clone(), block_helper.clone()]);
+    let (dep_graph, is_valid) = resolver.resolve(&[block_main.clone(), block_helper.clone()], "rust");
     assert!(is_valid);
     assert!(!dep_graph.has_cycle());
 
@@ -228,7 +228,7 @@ fn step_c() { step_b(); }
     let blocks = resolver.split_into_blocks(source);
     assert_eq!(blocks.len(), 3);
 
-    let (dep_graph, is_valid) = resolver.resolve(&blocks);
+    let (dep_graph, is_valid) = resolver.resolve(&blocks, "rust");
     assert!(is_valid);
     assert!(!dep_graph.has_cycle());
 

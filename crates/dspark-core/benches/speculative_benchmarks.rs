@@ -23,7 +23,7 @@ fn bench_ast_topological_sort(c: &mut Criterion) {
 
     c.bench_function("ast_topological_sort_50_blocks", |b| {
         b.iter(|| {
-            let (graph, is_valid) = resolver.resolve(black_box(&blocks));
+            let (graph, is_valid) = resolver.resolve(black_box(&blocks), "rust");
             assert!(is_valid);
             let sorted = graph.topological_sort();
             black_box(sorted);
