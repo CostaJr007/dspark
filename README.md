@@ -270,10 +270,13 @@ pytest -v
 
 ---
 
-## 📜 Attribution & Lineage
+## 📜 Attribution & Academic Lineage
 
 > [!NOTE]
-> **Lineage & Evolution**: This project originated as an advanced evolution and fork of open-source terminal agent scaffolding (including Grok/xAI-inspired CLI paradigms), re-architected from the ground up into a production-grade **Agent-Level Speculative Orchestration Engine** with native Rust acceleration (`dspark-core`), CEGAR formal contract verification, FastMCP protocol support, and DeepSeek v4 dual-engine curation.
+> **Academic Lineage & Inspiration**:
+> * **DeepSeek DSpark (2026)**: Inspired by the seminal work *"DSpark: Confidence-Scheduled Speculative Decoding for Large Language Models"* (DeepSeek-AI & Peking University, 2026), which pioneered confidence scheduling for speculative token generation on GPU runtimes. DSpark Agent abstracts and elevates these principles from token-level tensor scheduling to **macro-level multi-agent software orchestration, AST dependency resolution, and CEGAR verification loops**.
+> * **LLM-as-a-Verifier (2026)**: Incorporates and extends the Probabilistic Pivot Tournament (PPT) algorithm formulated by Kwok et al. (2026), replacing passive candidate selection with deterministic sandbox repair.
+> * **CLI Scaffolding**: Builds upon and evolves open-source terminal agent scaffolding paradigms into a high-performance native Rust core (`dspark-core`) and FastMCP server.
 
 ---
 
