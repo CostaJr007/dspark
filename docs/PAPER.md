@@ -2,19 +2,19 @@
 
 **Adeilson Costa**  
 *Independent Researcher, Ottawa, Ontario, Canada*  
-`Adeilsonjc@gmail.com`  
+`costajr007@users.noreply.github.com`  
 **Repository:** [https://github.com/CostaJr007/dspark](https://github.com/CostaJr007/dspark)
 
 ---
 
 ## Abstract
 
-Large Language Models (LLMs) applied to autonomous software engineering face two fundamental challenges: the **Self-Correction Fallacy**—wherein models exhibit systemic confirmation bias when attempting to audit their own autoregressive outputs—and the exponential economic cost of deploying flagship reasoning models across high-volume engineering workloads. While recent theoretical frameworks propose tournament-based Best-of-$N$ selection (e.g., *LLM-as-a-Verifier*, Kwok et al., 2026) and token-level speculative decoding in GPU runtimes (e.g., *DSpark*, DeepSeek & Peking University, 2026), current agentic architectures remain fundamentally limited by **passive candidate selection**: if all initial draft trajectories contain defects, pure tournament ranking merely selects the least flawed implementation while returning broken code to the user.
+Large Language Models (LLMs) applied to autonomous software engineering face two fundamental challenges: the **Self-Correction Fallacy**—wherein models exhibit systemic confirmation bias when attempting to audit their own autoregressive outputs—and the exponential economic cost of deploying flagship reasoning models across high-volume engineering workloads. While recent theoretical frameworks propose tournament-based Best-of-N selection (e.g., *LLM-as-a-Verifier*, Kwok et al., 2026) and token-level speculative decoding in GPU runtimes (e.g., *DSpark*, DeepSeek & Peking University, 2026), current agentic architectures remain fundamentally limited by **passive candidate selection**: if all initial draft trajectories contain defects, pure tournament ranking merely selects the least flawed implementation while returning broken code to the user.
 
 In this paper, we introduce **DSpark Agent**, an open-source, dual-engine framework that elevates speculative decoding and formal verification to the agent orchestration layer. DSpark orchestrates:
 1. **Semi-Autoregressive Speculative Drafting**: Spawns $N$ concurrent execution paths using diversified temperature scaling bounded by asynchronous semaphores.
 2. **Topological AST Invariant Resolution**: Constructs Directed Acyclic Graphs (DAGs) to validate code syntax and topologically sort caller-callee dependencies prior to remote API invocation.
-3. **Local Confidence-Scheduled Pruning**: Analyzes cyclomatic entropy and state mutations locally on CPU in $< 1\text{ ms}$, pruning 60.0% to 98.0% of trivial verification calls under hard budget constraints.
+3. **Local Confidence-Scheduled Pruning**: Analyzes cyclomatic entropy and state mutations locally on CPU in under 1 ms, pruning 60.0% to 98.0% of trivial verification calls under hard budget constraints.
 4. **Probabilistic Pivot Tournament (PPT)**: Evaluates candidate trajectories in $\mathcal{O}(Nk)$ pairwise comparisons instead of naive $\mathcal{O}(N^2)$ all-pairs ranking.
 5. **CEGAR Sandbox Refinement**: Enforces strict epistemic isolation between the **Creator** and the **Curator** (DeepSeek v4 Pro/Flash), using real OS-level sandbox tracebacks (`failure_tail`) to execute a 1-shot deterministic repair loop.
 
@@ -27,7 +27,7 @@ Empirical evaluations across HumanEval and complex software creation tasks demon
 The application of Large Language Models (LLMs) to autonomous code generation, bug fixing, and repository-level refactoring has emerged as a cornerstone of modern software engineering automation. However, practical deployment at scale remains hindered by two conflicting forces: **reliability** and **inference economics**.
 
 ### 1.1 The Self-Correction Fallacy
-A prevailing assumption in early agentic design was that an LLM prompted with *"Review your code and correct any errors"* would iteratively converge on correct implementations. Recent empirical studies have thoroughly debunked this premise (*Huang et al., 2023*; *Stechly et al., 2024*). Because generation and self-critique share the same autoregressive context window, token priors $\pi_\theta(y \mid x)$, and pre-training inductive biases, models exhibit acute **confirmation bias**—actively rationalizing syntax errors, hallucinated APIs, and inverted boolean logic.
+A prevailing assumption in early agentic design was that an LLM prompted with *"Review your code and correct any errors"* would iteratively converge on correct implementations. Recent empirical studies have thoroughly debunked this premise (*Huang et al., 2023*; *Stechly et al., 2024*). Because generation and self-critique share the same autoregressive context window, token priors, and pre-training inductive biases, models exhibit acute **confirmation bias**—actively rationalizing syntax errors, hallucinated APIs, and inverted boolean logic.
 
 ```mermaid
 flowchart LR
@@ -40,7 +40,7 @@ flowchart LR
 ```
 
 ### 1.2 The Limitation of Passive Selection
-To mitigate individual draft errors, consensus and Best-of-$N$ ranking methodologies have been proposed, notably the *Probabilistic Pivot Tournament (PPT)* introduced by Kwok et al. (2026). While PPT successfully reduces pairwise ranking complexity from $\mathcal{O}(N^2)$ to $\mathcal{O}(Nk)$, it operates as a **purely passive filter**. In real-world software engineering scenarios involving complex state invariants or distributed concurrency, it is common for *all* $N$ initial drafts from a weak or medium-tier model to fail edge-case boundary tests. Under passive selection, the tournament inevitably chooses a defective candidate, providing zero mechanism for active remediation.
+To mitigate individual draft errors, consensus and Best-of-N ranking methodologies have been proposed, notably the *Probabilistic Pivot Tournament (PPT)* introduced by Kwok et al. (2026). While PPT successfully reduces pairwise ranking complexity from $\mathcal{O}(N^2)$ to $\mathcal{O}(Nk)$, it operates as a **purely passive filter**. In real-world software engineering scenarios involving complex state invariants or distributed concurrency, it is common for *all* $N$ initial drafts from a weak or medium-tier model to fail edge-case boundary tests. Under passive selection, the tournament inevitably chooses a defective candidate, providing zero mechanism for active remediation.
 
 ### 1.3 Contributions
 To resolve these structural bottlenecks, this work presents **DSpark**, an agent-level speculative architecture with the following core contributions:
@@ -110,8 +110,13 @@ flowchart TD
 ```
 
 ### 3.1 Stage 1: Speculative Drafting & Temperature Scaling
-Given an engineering specification $S$, the speculative engine spawns $N$ concurrent drafting tasks bounded by an asynchronous `tokio::sync::Semaphore`. To maximize semantic exploration while maintaining structural validity, sampling temperatures scale dynamically across trajectories:
-$$T_i = T_{\mathrm{base}} + (i \cdot \Delta_T), \quad \text{where } T_{\mathrm{base}} = 0.20, \; \Delta_T = 0.15$$
+Given an engineering specification $S$, the speculative engine spawns $N$ concurrent drafting tasks bounded by an asynchronous semaphore (`tokio::sync::Semaphore`). To maximize semantic exploration while maintaining structural validity, sampling temperatures scale dynamically across trajectories:
+
+```text
+Trajectory Temperature Scaling:
+  T_i = T_base + (i × ΔT)
+  where T_base = 0.20 and ΔT = 0.15
+```
 
 This ensures that early trajectories ($\tau_0, \tau_1$) target high-probability canonical implementations, while higher trajectories ($\tau_{N-1}$) explore alternative algorithmic strategies.
 
@@ -122,27 +127,36 @@ Raw LLM outputs frequently define caller functions prior to callee dependencies 
 3. Kahn’s algorithm computes a topological ordering $\pi(\mathcal{V})$ such that for every directed edge $(u, v)$, callee $v$ precedes caller $u$ in output serialization. Cycles are detected at $\mathcal{O}(|\mathcal{V}| + |\mathcal{E}|)$ and rejected fail-fast.
 
 ### 3.3 Stage 3: Local Confidence Estimation on CPU
-Before allocating remote API budget, each block $b \in \tau_i$ is evaluated by the local `ConfidenceHead` on CPU in $< 1\text{ ms}$ without network roundtrips:
-$$\mathrm{Confidence}(b) = 1.0 - \left( 0.40 \cdot \mathcal{H}_{\mathrm{cyclo}}(b) \right) - \left( 0.25 \cdot \mathbf{1}_{\mathrm{complex}}(b) \right) - \left( 0.20 \cdot \mathbf{1}_{\mathrm{mutating}}(b) \right)$$
-where:
-- $\mathcal{H}_{\mathrm{cyclo}}(b) = \min\left(1.0, \frac{\mathrm{CyclomaticComplexity}(b) - 1}{15}\right)$
-- $\mathbf{1}_{\mathrm{complex}}(b)$ indicates nested closures, dynamic reflection, or unsafe memory blocks.
-- $\mathbf{1}_{\mathrm{mutating}}(b)$ indicates global state mutation or in-place pointer modifications.
+Before allocating remote API budget, each block $b \in \tau_i$ is evaluated by the local `ConfidenceHead` on CPU in **under 1 ms** without network roundtrips:
 
-Blocks with $\mathrm{Confidence} > 0.88$ (such as pure getters, data classes, and standard serialization routines) are marked as **Low Risk** and approved locally at zero API cost.
+```text
+Confidence Score Formulation:
+  Confidence(b) = 1.0 - (0.40 × CyclomaticEntropy(b))
+                      - (0.25 × IsComplexBlock(b))
+                      - (0.20 × IsMutatingState(b))
+```
+
+* **CyclomaticEntropy**: $\min(1.0, (\text{Complexity} - 1) / 15)$.
+* **IsComplexBlock**: Identifies nested closures, reflection, or unsafe memory blocks.
+* **IsMutatingState**: Identifies global mutations or in-place pointer modifications.
+
+Blocks with **Confidence > 0.88** (such as pure getters, data classes, and standard serialization routines) are marked as **Low Risk** and approved locally at zero API cost.
 
 ### 3.4 Stage 4: Cost-Aware Budget Scheduling
 The `CostScheduler` enforces a strict economic ceiling. Given a user-defined verification budget $B_{\text{max}}$ (defaulting to 20 remote calls), blocks are ordered descending by risk score $\mathcal{R}(b) = 1.0 - \text{Confidence}(b)$. Only the top-$k$ highest risk blocks are scheduled for remote LLM evaluation:
-$$\mathcal{S}_{\text{verify}} = \mathrm{argtop}_k \left( \{ \mathcal{R}(b) \mid b \in \tau \}, \; k = \min(|\tau|, B_{\text{max}}) \right)$$
+
+```text
+Verification Selection:
+  S_verify = argtop_k( { Risk(b) | b in Trajectory }, k = min(|Trajectory|, B_max) )
+```
+
 This deterministic pruning guarantees a hard spend ceiling regardless of input size.
 
 ### 3.5 Stage 5: Probabilistic Pivot Tournament (PPT)
 For high-risk candidates, DSpark executes the Probabilistic Pivot Tournament in three phases:
 1. **Hamiltonian Ring Pass**: Adjacent pairs $(i, (i+1) \pmod N)$ are evaluated in parallel, generating $N$ initial match results.
-2. **Anchor Pivot Selection**: Trajectories are ranked by win-rate mass; the top $k = \mathrm{clamp}(1, \lfloor N/2 \rfloor, k_{\text{req}})$ candidates are selected as pivots $\mathcal{P}$.
+2. **Anchor Pivot Selection**: Trajectories are ranked by win-rate mass; the top $k = \operatorname{clamp}(1, \lfloor N/2 \rfloor, k_{\text{req}})$ candidates are selected as pivots $\mathcal{P}$.
 3. **Anchor Tournament**: All non-pivot candidates $\tau \notin \mathcal{P}$ are evaluated exclusively against the pivot anchors $\mathcal{P}$, requiring $(N-k)k$ comparisons, plus $\binom{k}{2}$ comparisons among the pivots themselves.
-
-$$\text{Total Comparisons}(N, k) = N + (N-k)k + \binom{k}{2} = \mathcal{O}(Nk)$$
 
 ```mermaid
 flowchart TB
@@ -194,7 +208,9 @@ flowchart TB
 ### 3.6 Epistemic Isolation & CEGAR Refinement Loop
 When the tournament winner $\tau^*$ is submitted to the deterministic sandbox (Pytest / Cargo test runner) and fails an assertion:
 1. The execution traceback, failing line, and input-output discrepancy are parsed into a structured counterexample tuple:
-   $$\mathcal{C} = \langle \text{test-name}, \text{failing-line}, \text{traceback-tail}, \text{expected}, \text{actual} \rangle$$
+   ```text
+   CounterExample C = ⟨ test_name, failing_line, traceback_tail, expected_output, actual_output ⟩
+   ```
 2. **Epistemic Isolation**: The Curator model (DeepSeek v4 Pro / Flash) is invoked with *only* the raw source code, the formal contract specification, and $\mathcal{C}$. Crucially, the Creator's prior chain-of-thought, reasoning scratchpad, and conversation history are strictly quarantined.
 3. **Circuit Breaker**: The Curator performs at most **one single-shot surgical refinement pass**. If the patched code fails the sandbox a second time, the loop terminates immediately, returning the diagnostics to the user and preventing unbounded recursive spending.
 
@@ -204,22 +220,25 @@ When the tournament winner $\tau^*$ is submitted to the deterministic sandbox (P
 
 ### Theorem 1 (Tournament Comparison Complexity)
 *Let $N$ be the number of speculative draft trajectories and $k$ be the number of pivot anchors with $1 \le k \le \lfloor N/2 \rfloor$. The total number of pairwise LLM comparisons $\mathcal{M}(N, k)$ performed by DSpark satisfies:*
-$$\mathcal{M}(N, k) = N + (N-k)k + \frac{k(k-1)}{2} < \frac{N(N-1)}{2} = \mathcal{M}_{\mathrm{all-pairs}}(N), \quad \forall N \ge 10, \; k \ge 2$$
 
-*Proof.*  
-The all-pairs comparison count is $\mathcal{M}_{\mathrm{all-pairs}} = \frac{N^2 - N}{2}$.  
-For the PPT algorithm, expanding $\mathcal{M}(N, k)$:
-$$\mathcal{M}(N, k) = N + Nk - k^2 + \frac{k^2 - k}{2} = Nk + N - \frac{k^2 + k}{2}$$
-Computing the difference $\Delta(N, k) = \mathcal{M}_{\mathrm{all-pairs}} - \mathcal{M}(N, k)$:
-$$\Delta(N, k) = \frac{N^2 - N}{2} - \left( Nk + N - \frac{k^2 + k}{2} \right) = \frac{N^2 - (2k + 3)N + (k^2 + k)}{2}$$
-For fixed $k=3$:
-$$\Delta(N, 3) = \frac{N^2 - 9N + 12}{2}$$
-Setting $\Delta(N, 3) > 0$ yields the roots $N \approx \frac{9 \pm \sqrt{81 - 48}}{2} \approx \frac{9 \pm 5.74}{2}$. Thus, for all integers $N \ge 8$, $\Delta(N, 3) > 0$. For $N=100$ and $k=3$, $\mathcal{M}(100, 3) = 394$ versus $\mathcal{M}_{\mathrm{all-pairs}}(100) = 4,950$, representing an asymptotic comparison reduction of **92.04%**. $\blacksquare$
+```text
+Total Comparisons: M(N, k) = N + (N - k)·k + k·(k - 1)/2 = O(N·k)
+```
+
+**Asymptotic Scaling Comparison:**
+* For $N = 100$ and $k = 3$:
+  * **Naive All-Pairs Comparison:** 4,950 comparisons
+  * **DSpark PPT Tournament:** 394 comparisons
+  * **Net Reduction:** **92.04% fewer API calls**
 
 ### Proposition 1 (Prefix-Cache Invariance)
-*By enforcing static I/O contract serialization as the immutable prompt prefix $\mathcal{P}_{\mathrm{static}}$ prior to variable candidate source representations $\mathcal{P}_{\mathrm{var}}(\tau)$, the attention key-value tensor $\mathbf{K}_{\mathrm{prefix}}, \mathbf{V}_{\mathrm{prefix}}$ is computed exactly once per task, achieving a theoretical input token cost discount of:*
-$$\delta_{\mathrm{cache}} = \frac{|\mathcal{P}_{\mathrm{static}}|}{|\mathcal{P}_{\mathrm{static}}| + |\mathcal{P}_{\mathrm{var}}(\tau)|} \cdot \alpha_{\mathrm{provider}}$$
-*where $\alpha_{\mathrm{provider}} \in [0.50, 0.80]$ denotes the vendor KV-cache hit discount.*
+By enforcing static I/O contract serialization as the immutable prompt prefix $\mathcal{P}_{\text{static}}$ prior to variable candidate representations $\mathcal{P}_{\text{var}}(\tau)$, the attention key-value tensor is computed exactly once per task, achieving a theoretical input token discount of:
+
+```text
+Input Cache Discount:
+  δ_cache = [ |P_static| / (|P_static| + |P_var|) ] × α_provider
+  where α_provider ∈ [0.50, 0.80] represents the vendor KV-cache hit discount.
+```
 
 ---
 
@@ -233,30 +252,12 @@ All experiments were executed with live API endpoints (`gpt-3.5-turbo`, `gpt-4o-
 
 ### 5.1 Quality & Accuracy Gains
 
-| Configuration | Drafting Model (Tier 1) | Curator Model (Tier 2) | Zero-Shot Pass@1 | **DSpark Tiered Pass@1** | Absolute $\Delta$ |
+| Configuration | Drafting Model (Tier 1) | Curator Model (Tier 2) | Zero-Shot Pass@1 | **DSpark Tiered Pass@1** | Absolute Improvement |
 | :--- | :--- | :--- | :---: | :---: | :---: |
-| **Weak-Only Baseline** | `gpt-3.5-turbo` | None | 41.7% | 41.7% | — |
-| **DSpark Tiered Hybrid** | `gpt-3.5-turbo` | `deepseek-chat` | 41.7% | **75.0%** | **+33.3 pts** |
-| **Flagship Standalone (1-Shot)** | `deepseek-chat` | None | 91.7% | 91.7% | — |
-| **DSpark Flagship Speculative** | `deepseek-chat` | `deepseek-chat` | 91.7% | **100.0%** | **+8.3 pts** |
-
-```
-                       Pass@1 Accuracy Comparison (%)
-                       
-  100% ┌───────────────────────────────────────────────────────────── 100.0%
-       │                                                      █████
-   80% │                                    75.0%             █████
-       │                                    █████    91.7%    █████
-   60% │                  41.7%             █████    █████    █████
-       │                  █████             █████    █████    █████
-   40% │                  █████             █████    █████    █████
-       │                  █████             █████    █████    █████
-   20% │                  █████             █████    █████    █████
-       │                  █████             █████    █████    █████
-    0% └──────────────────┴─────────────────┴────────┴────────┴───────
-         Weak Baseline      DSpark Tiered     Flagship 1-Shot  DSpark Flagship
-         (gpt-3.5)          (Weak + DeepSeek) (DeepSeek)       (Speculative)
-```
+| **Weak-Only Baseline** | `gpt-3.5-turbo` | None | 41.7% | 41.7% | Baseline |
+| **DSpark Tiered Hybrid** | `gpt-3.5-turbo` | `deepseek-chat` | 41.7% | **75.0%** | **+33.3 pts (Rescue)** |
+| **Flagship Standalone (1-Shot)** | `deepseek-chat` | None | 91.7% | 91.7% | Baseline |
+| **DSpark Flagship Speculative** | `deepseek-chat` | `deepseek-chat` | 91.7% | **100.0%** | **+8.3 pts (Perfection)** |
 
 **Key Findings:**
 - **The Rescue Effect**: On tasks where `gpt-3.5-turbo` failed across all 3 initial draft trajectories (e.g., thread-safe token bucket rate limiters), passive tournament selection yielded 0% pass rate. DSpark’s CEGAR escalation policy targeted exactly the failing tasks with 100% precision, extracting the sandbox traceback and repairing 50% of previously fatal bugs in a single pass.
@@ -277,9 +278,13 @@ All experiments were executed with live API endpoints (`gpt-3.5-turbo`, `gpt-4o-
 An essential discovery during empirical pilot testing involves the interaction between `max_tokens` limits and reasoning models that emit hidden or explicit thinking chains (`reasoning_content`), such as DeepSeek R1/Flash or OpenAI o-series.
 
 In conventional models (e.g., GPT-4o-mini), `max_tokens=600` is sufficient for standard function synthesis. However, in reasoning models, internal thought tokens are accounted against the exact same completion token ceiling:
-$$\text{Tokens}_{\text{total}} = \text{Tokens}_{\text{reasoning}} + \text{Tokens}_{\text{code}} \le \text{MAX-TOKENS}$$
 
-When `max_tokens` was constrained to 600 tokens during initial pilot runs, the reasoning phase consumed 450–600 tokens, causing premature truncation of the code block and generating spurious syntax errors. Setting an asymmetric per-provider budget ($\text{MAX-TOKENS}=4096$ for reasoning models) immediately restored 100% compilation fidelity without increasing billing cost on simple completions.
+```text
+Total Token Constraint:
+  Tokens_total = Tokens_reasoning + Tokens_code ≤ MAX_TOKENS
+```
+
+When `max_tokens` was constrained to 600 tokens during initial pilot runs, the reasoning phase consumed 450–600 tokens, causing premature truncation of the code block and generating spurious syntax errors. Setting an asymmetric per-provider budget (`MAX_TOKENS = 4096` for reasoning models) immediately restored 100% compilation fidelity without increasing billing cost on simple completions.
 
 ```mermaid
 flowchart LR
@@ -296,10 +301,10 @@ We verified the tournament scaling bounds across 10,000 synthetic trajectory ite
 
 | Trajectories ($N$) | Effective Pivots ($k$) | PPT Comparisons | All-Pairs Comparisons | Theoretical Savings | Measured CI Status |
 | :---: | :---: | :---: | :---: | :---: | :---: |
-| 10 | 3 | 34 | 45 | 24.4% | ✅ Asserted |
-| 20 | 3 | 74 | 190 | 61.1% | ✅ Asserted |
-| 50 | 3 | 194 | 1,225 | 84.2% | ✅ Asserted |
-| 100 | 3 | 394 | 4,950 | 92.0% | ✅ Asserted |
+| 10 | 3 | 34 | 45 | 24.4% | ✅ Verified |
+| 20 | 3 | 74 | 190 | 61.1% | ✅ Verified |
+| 50 | 3 | 194 | 1,225 | 84.2% | ✅ Verified |
+| 100 | 3 | 394 | 4,950 | 92.0% | ✅ Verified |
 
 ---
 
@@ -378,7 +383,7 @@ While DSpark substantially improves the accuracy-cost pareto frontier, several e
 
 ## 8. Conclusion
 
-We presented **DSpark**, an agent-level speculative orchestration and dual-engine verification architecture. By replacing passive Best-of-$N$ selection with active, counterexample-guided abstraction refinement and combining CPU-based confidence pruning with $\mathcal{O}(Nk)$ probabilistic tournaments, DSpark bridges the divide between formal verification rigor and practical inference economics. Our empirical results demonstrate that weak models can achieve near-flagship performance (+33.3 pts) while flagship models attain 100% pass rates at a fraction of standard API expenditure.
+We presented **DSpark**, an agent-level speculative orchestration and dual-engine verification architecture. By replacing passive Best-of-N selection with active, counterexample-guided abstraction refinement and combining CPU-based confidence pruning with $\mathcal{O}(Nk)$ probabilistic tournaments, DSpark bridges the divide between formal verification rigor and practical inference economics. Our empirical results demonstrate that weak models can achieve near-flagship performance (+33.3 pts) while flagship models attain 100% pass rates at a fraction of standard API expenditure.
 
 All code, benchmarks, test suites, and MCP integration kits are released under the MIT license at [https://github.com/CostaJr007/dspark](https://github.com/CostaJr007/dspark).
 
@@ -393,4 +398,3 @@ All code, benchmarks, test suites, and MCP integration kits are released under t
 5. **Kwok, K., et al. (2026).** *LLM-as-a-Verifier: A General-Purpose Verification Framework with Probabilistic Pivot Tournaments.* arXiv preprint arXiv:2607.05391.
 6. **Leviathan, Y., Kalman, M., & Matias, Y. (2023).** *Fast inference from transformers via speculative decoding.* In International Conference on Machine Learning (pp. 19274-19286). PMLR.
 7. **Stechly, K., Valmeekam, K., & Kambhampati, S. (2024).** *On the self-verification limitations of large language models on reasoning and planning tasks.* arXiv preprint arXiv:2402.08115.
-
