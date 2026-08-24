@@ -164,7 +164,7 @@ $$\text{Total Comparisons}(N, k) = N + (N-k)k + \binom{k}{2} = \mathcal{O}(Nk)$$
 ### 3.6 Epistemic Isolation & CEGAR Refinement Loop
 When the tournament winner $\tau^*$ is submitted to the deterministic sandbox (Pytest / Cargo test runner) and fails an assertion:
 1. The execution traceback, failing line, and input-output discrepancy are parsed into a structured counterexample tuple:
-   $$\mathcal{C} = \langle \text{test\_name}, \text{failing\_line}, \text{traceback\_tail}, \text{expected}, \text{actual} \rangle$$
+   $$\mathcal{C} = \langle \text{test-name}, \text{failing-line}, \text{traceback-tail}, \text{expected}, \text{actual} \rangle$$
 2. **Epistemic Isolation**: The Curator model (DeepSeek v4 Pro / Flash) is invoked with *only* the raw source code, the formal contract specification, and $\mathcal{C}$. Crucially, the Creator's prior chain-of-thought, reasoning scratchpad, and conversation history are strictly quarantined.
 3. **Circuit Breaker**: The Curator performs at most **one single-shot surgical refinement pass**. If the patched code fails the sandbox a second time, the loop terminates immediately, returning the diagnostics to the user and preventing unbounded recursive spending.
 
@@ -247,9 +247,9 @@ All experiments were executed with live API endpoints (`gpt-3.5-turbo`, `gpt-4o-
 An essential discovery during empirical pilot testing involves the interaction between `max_tokens` limits and reasoning models that emit hidden or explicit thinking chains (`reasoning_content`), such as DeepSeek R1/Flash or OpenAI o-series.
 
 In conventional models (e.g., GPT-4o-mini), `max_tokens=600` is sufficient for standard function synthesis. However, in reasoning models, internal thought tokens are accounted against the exact same completion token ceiling:
-$$\text{Tokens}_{\text{total}} = \text{Tokens}_{\text{reasoning}} + \text{Tokens}_{\text{code}} \le \text{MAX\_TOKENS}$$
+$$\text{Tokens}_{\text{total}} = \text{Tokens}_{\text{reasoning}} + \text{Tokens}_{\text{code}} \le \text{MAX-TOKENS}$$
 
-When `max_tokens` was constrained to 600 tokens during initial pilot runs, the reasoning phase consumed 450–600 tokens, causing premature truncation of the code block and generating spurious syntax errors. Setting an asymmetric per-provider budget ($\text{MAX\_TOKENS}=4096$ for reasoning models) immediately restored 100% compilation fidelity without increasing billing cost on simple completions.
+When `max_tokens` was constrained to 600 tokens during initial pilot runs, the reasoning phase consumed 450–600 tokens, causing premature truncation of the code block and generating spurious syntax errors. Setting an asymmetric per-provider budget ($\text{MAX-TOKENS}=4096$ for reasoning models) immediately restored 100% compilation fidelity without increasing billing cost on simple completions.
 
 ```
        Reasoning Model Token Allocation Dynamics (max_tokens=4096)

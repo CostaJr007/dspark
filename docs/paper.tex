@@ -149,7 +149,7 @@ For high-risk candidates, DSpark executes the Probabilistic Pivot Tournament in 
 \subsection{Epistemic Isolation \& CEGAR Refinement Loop}
 When the tournament winner $\tau^*$ fails a contract in the deterministic sandbox (Pytest / Cargo runner):
 \begin{enumerate}
-    \item The execution traceback is parsed into a structured counterexample tuple $\mathcal{C} = \langle \text{test}, \text{line}, \text{traceback\_tail}, \text{expected}, \text{actual} \rangle$.
+    \item The execution traceback is parsed into a structured counterexample tuple $\mathcal{C} = \langle \text{test}, \text{line}, \text{traceback-tail}, \text{expected}, \text{actual} \rangle$.
     \item \textbf{Epistemic Isolation}: The Curator model (DeepSeek v4 Pro / Flash) is invoked with \textit{only} the raw source code, the contract specification, and $\mathcal{C}$. The Creator's prior chain-of-thought is strictly quarantined.
     \item \textbf{Circuit Breaker}: The Curator performs at most \textbf{one single-shot surgical refinement pass}, preventing unbounded loops.
 \end{enumerate}
