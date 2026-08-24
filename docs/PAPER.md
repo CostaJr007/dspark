@@ -14,7 +14,7 @@ Large Language Models (LLMs) applied to autonomous software engineering face two
 In this paper, we introduce **DSpark Agent**, an open-source, dual-engine framework that elevates speculative decoding and formal verification to the agent orchestration layer. DSpark orchestrates:
 1. **Semi-Autoregressive Speculative Drafting**: Spawns $N$ concurrent execution paths using diversified temperature scaling bounded by asynchronous semaphores.
 2. **Topological AST Invariant Resolution**: Constructs Directed Acyclic Graphs (DAGs) to validate code syntax and topologically sort caller-callee dependencies prior to remote API invocation.
-3. **Local Confidence-Scheduled Pruning**: Analyzes cyclomatic entropy and state mutations locally on CPU in $<1\text{ms}$, pruning 60.0% to 98.0% of trivial verification calls under hard budget constraints.
+3. **Local Confidence-Scheduled Pruning**: Analyzes cyclomatic entropy and state mutations locally on CPU in $< 1\text{ ms}$, pruning 60.0% to 98.0% of trivial verification calls under hard budget constraints.
 4. **Probabilistic Pivot Tournament (PPT)**: Evaluates candidate trajectories in $\mathcal{O}(Nk)$ pairwise comparisons instead of naive $\mathcal{O}(N^2)$ all-pairs ranking.
 5. **CEGAR Sandbox Refinement**: Enforces strict epistemic isolation between the **Creator** and the **Curator** (DeepSeek v4 Pro/Flash), using real OS-level sandbox tracebacks (`failure_tail`) to execute a 1-shot deterministic repair loop.
 
@@ -122,14 +122,14 @@ Raw LLM outputs frequently define caller functions prior to callee dependencies 
 3. Kahn’s algorithm computes a topological ordering $\pi(\mathcal{V})$ such that for every directed edge $(u, v)$, callee $v$ precedes caller $u$ in output serialization. Cycles are detected at $\mathcal{O}(|\mathcal{V}| + |\mathcal{E}|)$ and rejected fail-fast.
 
 ### 3.3 Stage 3: Local Confidence Estimation on CPU
-Before allocating remote API budget, each block $b \in \tau_i$ is evaluated by the local `ConfidenceHead` on CPU in $<1\text{ms}$ without network roundtrips:
-$$\text{Confidence}(b) = 1.0 - \left( 0.40 \cdot \mathcal{H}_{\text{cyclo}}(b) \right) - \left( 0.25 \cdot \mathbf{1}_{\text{complex}}(b) \right) - \left( 0.20 \cdot \mathbf{1}_{\text{mutating}}(b) \right)$$
+Before allocating remote API budget, each block $b \in \tau_i$ is evaluated by the local `ConfidenceHead` on CPU in $< 1\text{ ms}$ without network roundtrips:
+$$\mathrm{Confidence}(b) = 1.0 - \left( 0.40 \cdot \mathcal{H}_{\mathrm{cyclo}}(b) \right) - \left( 0.25 \cdot \mathbf{1}_{\mathrm{complex}}(b) \right) - \left( 0.20 \cdot \mathbf{1}_{\mathrm{mutating}}(b) \right)$$
 where:
-- $\mathcal{H}_{\text{cyclo}}(b) = \min\left(1.0, \frac{\text{CyclomaticComplexity}(b) - 1}{15}\right)$
-- $\mathbf{1}_{\text{complex}}(b)$ indicates nested closures, dynamic reflection, or unsafe memory blocks.
-- $\mathbf{1}_{\text{mutating}}(b)$ indicates global state mutation or in-place pointer modifications.
+- $\mathcal{H}_{\mathrm{cyclo}}(b) = \min\left(1.0, \frac{\mathrm{CyclomaticComplexity}(b) - 1}{15}\right)$
+- $\mathbf{1}_{\mathrm{complex}}(b)$ indicates nested closures, dynamic reflection, or unsafe memory blocks.
+- $\mathbf{1}_{\mathrm{mutating}}(b)$ indicates global state mutation or in-place pointer modifications.
 
-Blocks with $\text{Confidence} > 0.88$ (such as pure getters, data classes, and standard serialization routines) are marked as **Low Risk** and approved locally at zero API cost.
+Blocks with $\mathrm{Confidence} > 0.88$ (such as pure getters, data classes, and standard serialization routines) are marked as **Low Risk** and approved locally at zero API cost.
 
 ### 3.4 Stage 4: Cost-Aware Budget Scheduling
 The `CostScheduler` enforces a strict economic ceiling. Given a user-defined verification budget $B_{\text{max}}$ (defaulting to 20 remote calls), blocks are ordered descending by risk score $\mathcal{R}(b) = 1.0 - \text{Confidence}(b)$. Only the top-$k$ highest risk blocks are scheduled for remote LLM evaluation:

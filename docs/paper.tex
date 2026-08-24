@@ -122,11 +122,11 @@ Raw LLM outputs frequently define caller functions prior to callee dependencies 
 \end{enumerate}
 
 \subsection{Stage 3: Local Confidence Estimation on CPU}
-Before allocating remote API budget, each block $b \in \tau_i$ is evaluated by the local \texttt{ConfidenceHead} on CPU in $<1\text{ms}$ without network roundtrips:
+Before allocating remote API budget, each block $b \in \tau_i$ is evaluated by the local \texttt{ConfidenceHead} on CPU in $< 1\text{ ms}$ without network roundtrips:
 \begin{equation}
-\text{Conf}(b) = 1.0 - (0.40 \cdot \mathcal{H}_{\text{cyclo}}(b)) - (0.25 \cdot \mathbf{1}_{\text{complex}}(b)) - (0.20 \cdot \mathbf{1}_{\text{mutating}}(b))
+\mathrm{Conf}(b) = 1.0 - (0.40 \cdot \mathcal{H}_{\mathrm{cyclo}}(b)) - (0.25 \cdot \mathbf{1}_{\mathrm{complex}}(b)) - (0.20 \cdot \mathbf{1}_{\mathrm{mutating}}(b))
 \end{equation}
-where $\mathcal{H}_{\text{cyclo}}(b) = \min(1.0, \frac{\text{CycloComplexity}(b) - 1}{15})$, $\mathbf{1}_{\text{complex}}(b)$ indicates nested closures or unsafe pointers, and $\mathbf{1}_{\text{mutating}}(b)$ indicates global state mutation. Blocks with $\text{Conf} > 0.88$ are approved locally at zero API cost.
+where $\mathcal{H}_{\mathrm{cyclo}}(b) = \min(1.0, \frac{\mathrm{CycloComplexity}(b) - 1}{15})$, $\mathbf{1}_{\mathrm{complex}}(b)$ indicates nested closures or unsafe pointers, and $\mathbf{1}_{\mathrm{mutating}}(b)$ indicates global state mutation. Blocks with $\mathrm{Conf} > 0.88$ are approved locally at zero API cost.
 
 \subsection{Stage 4: Cost-Aware Budget Scheduling}
 The \texttt{CostScheduler} enforces a strict economic ceiling. Given a user-defined verification budget $B_{\text{max}}$ (defaulting to 20 remote calls), blocks are ordered descending by risk score $\mathcal{R}(b) = 1.0 - \text{Conf}(b)$. Only the top-$k$ highest risk blocks are scheduled for remote LLM evaluation:
