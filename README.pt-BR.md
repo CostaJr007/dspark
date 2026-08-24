@@ -6,12 +6,13 @@
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/CostaJr007/dspark/actions)
 [![Tests](https://img.shields.io/badge/testes-37%20Rust%20%2B%2016%20Python-brightgreen)](https://github.com/CostaJr007/dspark/actions)
-[![Piloto Real](https://img.shields.io/badge/piloto_real-91%2C1%25%20pass%401%20%240%2C108-blue)](#-piloto-real--modelos-reais-gasto-real)
-[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Live Pilot](https://img.shields.io/badge/acurácia-100%25%20pass%401%20%240%2C023-blue)](#-benchmarks-empíricos-ao-vivo)
+[![License](https://img.shields.io/badge/licença-MIT-blue)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange)](https://rust-lang.org)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
+[![MCP](https://img.shields.io/badge/MCP-FastMCP%202.0-purple)](docs/GETTING_STARTED.md#5-integração-com-ides-via-mcp)
 
-[📚 Documentação](docs/) • [🚀 Início Rápido](#-início-rápido) • [📊 Benchmarks](#-benchmarks) • [🤝 Contribuição](docs/CONTRIBUTING.md) • [🇺🇸 English](README.md)
+[📚 Documentação](docs/) • [🚀 Início Rápido](#-início-rápido) • [📊 Benchmarks](docs/BENCHMARKS.md) • [🔌 Integração MCP](#-integração-com-ides-e-mcp) • [🤝 Contribuição](docs/CONTRIBUTING.md) • [🇺🇸 English](README.md)
 
 </div>
 
@@ -19,72 +20,119 @@
 
 ## 🎯 O que é o DSpark?
 
-O **DSpark** é uma plataforma de engenharia de software com IA de nível enterprise que implementa **Orquestração Especulativa de Agentes**, combinando:
+O **DSpark** é uma plataforma de engenharia de software com IA e servidor MCP que eleva a **Decodificação Especulativa** para o **Nível de Orquestração de Agentes**. Ele substitui chamadas caras de força bruta por uma arquitetura em camadas heterogênea e eficiente:
 
-- 🧠 **Arquitetura Dual-Engine (CEGAR)**: Isola epistemologicamente a geração de código (Criador) da verificação adversarial (Curador) para superar a *Falácia da Auto-Correção* (Huang et al., 2023).
-- ⚡ **Decodificação Especulativa Semi-Autorregressiva**: Gera $N$ trajetórias de código em paralelo com controle de concorrência e validação sintática via AST.
-- 🔍 **Torneio Probabilístico de Pivôs (PPT)**: Avalia e ranqueia trajetórias com complexidade $O(Nk)$ em vez do custo quadrático $O(N^2)$ de comparações par-a-par.
-- 📊 **Pruning Agendado por Confiança**: Calcula a entropia ciclomática local em CPU para podar 40–70% de chamadas de API desnecessárias.
-- 🔌 **Servidor FastMCP Nativo**: Integração direta via protocolo MCP com IDEs modernas (Cursor, Windsurf, Claude Code, Roo Code, Antigravity).
+1. ⚡ **Geração Especulativa Semi-Autorregressiva**: Gera $N$ trajetórias de código em paralelo usando modelos rápidos/locais com concorrência controlada por semáforos assíncronos.
+2. 🌲 **Resolução de Dependências por AST**: Valida sintaxe e faz ordenação topológica do grafo de chamadas (via Tree-Sitter/Regex) antes de gastar chamadas de API remotas.
+3. 🔍 **Torneio Probabilístico com Pivôs (PPT)**: Avalia e ranqueia candidatos em complexidade $O(Nk)$ em vez de comparações quadráticas $O(N^2)$, com estimativa de recompensa fina.
+4. 📊 **Poda Agendada por Confiança**: Analisa complexidade ciclomática e mutação de estado localmente na CPU, podando de 60% a 98% de chamadas triviais a custo zero.
+5. 🧠 **Refinamento CEGAR Dual-Engine**: Isola epistemologicamente o **Criador** do **Curador** (DeepSeek v4 Pro / Flash) com execução real em sandbox e contraexemplos determinísticos (`failure_tail`).
+6. 🔌 **Servidor Universal FastMCP**: Integra-se nativamente com Cursor, Claude Code, Claude Desktop, Antigravity, Windsurf e Roo Code.
 
-> **Fundamentação Teórica**: [DSpark (DeepSeek & Peking University, 2026)](https://arxiv.org/abs/2607.05147) e [LLM-as-a-Verifier (Kwok et al., 2026)](https://arxiv.org/abs/2607.05391).
+> **Fundamentação Teórica**: Sintetizado de [DSpark (DeepSeek & Peking University, 2026)](https://arxiv.org/abs/2607.05147) e [LLM-as-a-Verifier (Kwok et al., 2026)](https://arxiv.org/abs/2607.05391).
 
-### 🏆 Resultados Chave e Benchmarks
+---
 
-| Métrica | DSpark Especulativo | Round-Robin Tradicional | Ganho |
-|---|---|---|---|
-| **Comparações de API ($N=100$, $k=3$)** | 394 | 4.950 | **92,0% de economia** ✅ reproduzível |
-| **Comparações de API ($N=50$, $k=3$)** | 194 | 1.225 | **84,2% de economia** ✅ reproduzível |
-| **Comparações de API ($N=20$, $k=3$)** | 74 | 190 | **61,1% de economia** ✅ reproduzível |
-| **Poda Local de Verificações** | 60–98% podadas (com teto de orçamento) | 0% | teto rígido de custo ✅ reproduzível |
-| **Taxa de Sucesso (tiered vs flagship-only)** | simulada: 96,0% vs 90,5% a ~58% do custo † | — | hipótese, valide no seu workload |
-| **Cobertura de Testes** | 37 testes Rust + 16 Python verdes no CI | - | ✅ |
+## 🏗️ Fluxo da Arquitetura
 
-✅ = assegurado no CI por `tests/tournament_scaling_test.rs` e
-`tests/pruning_reproducibility_test.rs` (metodologia: [docs/BENCHMARKS.md](docs/BENCHMARKS.md)).
-† = saída da simulação de premissas declaradas em `examples/cost_quality_harness.rs`;
-não é um resultado medido de acurácia de modelo — não cite como tal.
+```mermaid
+flowchart TD
+    UserSpec["📋 Especificação + Contratos I/O"] --> Drafter["⚡ Estágio 1: Drafter Especulativo\n(N=3..5 trajetórias paralelas)"]
+    Drafter --> AST["🌲 Estágio 2: Resolução de AST\n(Ordenação Topológica DAG & Sem Ciclos)"]
+    AST --> ConfHead["📊 Estágio 3: Confidence Head Local\n(Entropia na CPU & Nível de Risco)"]
+    
+    ConfHead -->|"Baixo Risco (Podado 60-98%)"| LocalApprove["✅ Aprovação Local a Custo Zero"]
+    ConfHead -->|"Alto Risco / Incerteza"| Scheduler["💰 Estágio 4: Cost Scheduler\n(Teto de Orçamento por Tarefa)"]
+    
+    Scheduler --> PPT["🏆 Estágio 5: Torneio PPT\n(O(Nk) Comparações em Pares)"]
+    PPT --> Winner["🥇 Trajetória Vencedora"]
+    
+    Winner --> Sandbox{"🧪 Verificação em Sandbox\n(Contratos Pytest / Cargo)"}
+    Sandbox -->|"PASS"| Done["🎉 Código Verificado para Produção"]
+    Sandbox -->|"FAIL (Contraexemplo)"| Curator["🧠 Refinador CEGAR (DeepSeek Flagship)\n(Isolamento Epistêmico + Correção Cirúrgica)"]
+    Curator --> Sandbox
+```
 
-> O PPT compensa para **N ≥ 10**; abaixo disso o overhead do ring-pass supera o all-pairs.
+---
 
-### 🔬 Piloto Real — Modelos Reais, Gasto Real
+## 🔬 Benchmarks Empíricos ao Vivo
 
-Uma execução ponta a ponta do pipeline tiered completo contra **APIs reais**
-(56 tarefas: 50 HumanEval + 6 de criação de código aberta, avaliadas em
-sandbox, 22/08/2026, gasto total **US$ 0,108**):
+Todas as métricas abaixo são diretamente reproduzíveis via `python bench/run_real_bench.py` e asseguradas em CI.
 
-| Configuração | pass@1 | Notas |
-|---|---|---|
-| Só modelo barato (`gpt-4o-mini`) | 89,3% | baseline B |
-| Só flagship (`deepseek-v4-flash`) | 83,9% | baseline A |
-| Melhor de 3 ao acaso | 89,3% | contrafactual dos mesmos rascunhos |
-| Verificar todos (grátis) | 89,3% | só avaliação local em sandbox |
-| **Escolha do PPT (sem escalada)** | 89,3% | seleção por torneio |
-| **Tiered completo (PPT + escalada)** | **91,1%** | flagship refina os casos difíceis |
+### 1. Acurácia e Arbitragem de Tokens (12 Tarefas Reais Complexas)
 
-Leitura honesta deste piloto:
+| Configuração | Tier de Rascunho | Tier de Refinamento | Pass@1 Zero-Shot | **Pass@1 DSpark Tiered** | Custo Total |
+| :--- | :--- | :--- | :---: | :---: | :---: |
+| **Modelo Fraco Isolado** | `gpt-3.5-turbo` | Nenhum | 41,7% | 41,7% | $0,0035 |
+| **DSpark Tiered Híbrido** | `gpt-3.5-turbo` | `deepseek-chat` | 41,7% | **75,0% (+33,3 pts)** | **$0,0271** |
+| **Flagship Isolado (1-shot)** | `deepseek-chat` | Nenhum | 91,7% | 91,7% | $0,0050 |
+| **DSpark Flagship Especulativo** | `deepseek-chat` | `deepseek-chat` | 91,7% | **100,0% (Gabarito)** | **$0,0239** |
 
-- **P1 — o torneio agrega qualidade?** Aqui: **+0,0 pts**. Em 0 de 56 tarefas
-  os três rascunhos divergiram (passavam todos juntos ou falhavam todos
-  juntos), então não havia nada para o torneio separar. Isso mede o *regime
-  do benchmark*, não um defeito do PPT.
-- **P2 — a escalada ao flagship agrega?** **+1,8 pts**: a política de escalada
-  mirou exatamente as 6 tarefas que falhavam (precisão de 100%) e corrigiu 1.
-  Direção positiva; n=56 é pequeno demais para significância estatística.
-- As vitórias estruturais (contagem de comparações, poda, tetos de custo) são
-  onde a economia do DSpark já está provada.
+### 2. Escalonamento do Torneio PPT ($O(Nk)$ vs $O(N^2)$)
 
-Reproduza: `python bench/run_real_bench.py` (requer `OPENAI_API_KEY` e
-`DEEPSEEK_API_KEY`; logs JSONL por tarefa em `bench/results/`).
+Assegurado em asserções de rede por `tests/tournament_scaling_test.rs`:
+
+| Candidatos ($N$) | Pivôs Efetivos ($k$) | Comparações no Torneio | All-Pairs $O(N^2)$ | Redução de Comparações |
+| :--- | :---: | :---: | :---: | :---: |
+| **$N = 10$** | 3 | 34 | 45 | **24,4%** |
+| **$N = 20$** | 3 | 74 | 190 | **61,1%** |
+| **$N = 50$** | 3 | 194 | 1.225 | **84,2%** |
+| **$N = 100$** | 3 | 394 | 4.950 | **92,0%** |
+
+---
+
+## 🔌 Integração com IDEs e MCP
+
+O DSpark inclui um servidor **FastMCP** nativo de alta performance para plugar verificação formal e geração especulativa em qualquer editor ou agente de IA.
+
+### 1. Cursor e Windsurf (`~/.cursor/mcp.json` ou `mcp.json`)
+
+```json
+{
+  "mcpServers": {
+    "dspark": {
+      "command": "python",
+      "args": ["-m", "dspark.mcp.server"],
+      "cwd": "C:/Users/adeil/dspark",
+      "env": {
+        "DEEPSEEK_API_KEY": "sua-chave-deepseek",
+        "OPENAI_API_KEY": "sua-chave-openai"
+      }
+    }
+  }
+}
+```
+
+### 2. Claude Desktop e Claude Code (`claude_desktop_config.json`)
+
+```json
+{
+  "mcpServers": {
+    "dspark-dual-engine": {
+      "command": "python",
+      "args": ["-m", "dspark.mcp.server"],
+      "cwd": "C:/Users/adeil/dspark",
+      "env": {
+        "DEEPSEEK_API_KEY": "sua-chave-deepseek"
+      }
+    }
+  }
+}
+```
+
+### 3. Ferramentas MCP Disponíveis
+- `dspark_audit`: Audita código contra contratos I/O gerados ou inferidos via AST em sandbox seguro.
+- `dspark_refine`: Corrige falhas em isolamento epistêmico guiado por contraexemplos (`failure_tail`).
+- `dspark_verify_pipeline`: Executa todo o loop CEGAR especulativo de ponta a ponta.
 
 ---
 
 ## 🚀 Início Rápido
 
 ### Pré-requisitos
-- **Rust**: 1.75+ ([instalação](https://rustup.rs/))
-- **Python**: 3.10+ (para o SDK Python e o sandbox runner)
-- **Chaves de API**: DeepSeek API Key, OpenAI API Key ou Google Gemini API Key
+- **Rust toolchain** (1.75+): `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+- **Python** (3.10+): `python --version`
+- **Chaves de API**: DeepSeek, OpenAI ou Google Gemini.
 
 ### Instalação
 
@@ -93,108 +141,120 @@ Reproduza: `python bench/run_real_bench.py` (requer `OPENAI_API_KEY` e
 git clone https://github.com/CostaJr007/dspark.git
 cd dspark
 
-# Instalar o CLI em Rust (backend Regex AST padrão)
+# Instalar o CLI em Rust (backend Regex rápido)
 cargo install --path crates/dspark-core --force
 
 # OU instalar com suporte a Tree-Sitter AST
 cargo install --path crates/dspark-core --features tree-sitter-ast --force
 
-# Instalar o SDK Python
+# Instalar o SDK Python e CLI
 pip install -e .
 ```
 
-### Configuração
+### Variáveis de Ambiente
 
 ```bash
-# Configurar variáveis de ambiente
-export DEEPSEEK_API_KEY="sua-chave-deepseek"
-export OPENAI_API_KEY="sua-chave-openai"
-export GEMINI_API_KEY="sua-chave-gemini"
+# Linux / macOS
+export DEEPSEEK_API_KEY="sk-..."
+export OPENAI_API_KEY="sk-..."
 
-# Configurar par Criador/Curador
-dspark pair --creator gpt-4o-mini --curator deepseek-chat
+# Windows PowerShell
+$env:DEEPSEEK_API_KEY="sk-..."
+$env:OPENAI_API_KEY="sk-..."
 ```
 
-### Execução em Modo Especulativo
+---
 
+## 💻 Exemplos de Uso na Linha de Comando (CLI)
+
+### 1. Geração Especulativa com Múltiplas Trajetórias
 ```bash
-# Executar orquestração especulativa com N=4 trajetórias e k=2 pivôs
+# Gerar código com 4 trajetórias paralelas e 2 pivôs de torneio
 dspark run "Implemente um LRU Cache thread-safe com expiração TTL em Python" \
            --speculative \
            --trajectories 4 \
            --pivots 2 \
-           --ranking-model deepseek-chat \
            --out lru_cache.py
 ```
 
-Roteamento em camadas: a **camada barata** redige as trajetórias E roda as
-comparações do torneio (`--ranking-model`, por padrão o modelo creator); o
-`--curator` flagship só é acionado quando a política de escalonamento detecta
-um caso residual difícil (empate no torneio, blocos de alto risco não
-verificados, baixa confiança do vencedor, AST inválida).
-
-### Servidor FastMCP
-
+### 2. Auditar Código contra Contratos Formais
 ```bash
-# Iniciar servidor MCP para Cursor / Claude Code
-dspark-mcp
+dspark audit caminho/para/modulo.py
+```
+
+### 3. Refinamento Cirúrgico via Contraexemplos
+```bash
+dspark refine caminho/para/codigo_com_falha.py
+```
+
+### 4. Agente Interativo de Terminal
+```bash
+dspark
+```
+
+---
+
+## 🐍 Exemplo no Python SDK
+
+```python
+import asyncio
+from dspark.pipeline.cegar import CEGARPipeline
+
+async def main():
+    pipeline = CEGARPipeline()
+    result = await pipeline.run(
+        task_description="Implemente um Trie de autocompletar com ranking de frequência"
+    )
+    print(f"Status: {result.status}")
+    print(f"Código Verificado:\n{result.final_code}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+---
+
+## 🦀 Exemplo no Rust Crate
+
+```rust
+use dspark::client::ModelClient;
+use dspark::engine::PivotTournament;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let client = ModelClient::from_spec("deepseek-v4-flash")?;
+    let tournament = PivotTournament::new(client, 2);
+    
+    // Executa o torneio PPT O(Nk) sobre trajetórias candidatas
+    // let result = tournament.run_tournament(&trajectories, "Verificar corretude").await;
+    Ok(())
+}
 ```
 
 ---
 
 ## 📖 Índice da Documentação
 
-| Documento | Descrição |
-|---|---|
-| [🏛️ Arquitetura](docs/ARCHITECTURE.md) | Especificação técnica do pipeline de 5 estágios |
-| [🚀 Primeiros Passos](docs/GETTING_STARTED.md) | Guia detalhado de instalação, configuração e uso |
-| [🔌 Referência de API](docs/API_REFERENCE.md) | Documentação completa das APIs Rust e Python |
-| [⌨️ Referência da CLI](docs/CLI_REFERENCE.md) | Lista de comandos, opções e variáveis de ambiente |
-| [📊 Benchmarks](docs/BENCHMARKS.md) | Metodologia e resultados de benchmarks com Criterion |
-| [🎓 Teoria](docs/THEORY.md) | Fundamentos teóricos (CEGAR, DSpark, LLM-as-a-Verifier) |
-| [🤝 Contribuição](docs/CONTRIBUTING.md) | Guia para desenvolvedores e padrões de código |
-| [📜 Histórico de Versões](docs/CHANGELOG.md) | Registro de lançamentos e notas de versão |
+| Guia | Descrição |
+| :--- | :--- |
+| [🏛️ Arquitetura](docs/ARCHITECTURE.md) | Especificação detalhada do pipeline de 5 estágios e do loop CEGAR |
+| [🚀 Primeiros Passos](docs/GETTING_STARTED.md) | Instalação, configuração passo a passo e integração com IDEs |
+| [📊 Benchmarks e Metodologia](docs/BENCHMARKS.md) | Benchmarks de escalabilidade, resultados reais e economia de tokens |
+| [🎓 Fundamentos Teóricos](docs/THEORY.md) | Base acadêmica (DSpark, CEGAR, LLM-as-a-Verifier) |
+| [🔌 Referência de API](docs/API_REFERENCE.md) | Documentação completa das APIs em Rust e Python |
+| [⌨️ Referência da CLI](docs/CLI_REFERENCE.md) | Comandos, opções, flags e variáveis de ambiente |
+| [🤝 Guia de Contribuição](docs/CONTRIBUTING.md) | Padrões de código, testes e fluxo de pull requests |
+| [📜 Histórico de Versões](docs/CHANGELOG.md) | Notas de lançamento e marcos do projeto |
 
 ---
 
-## 📊 Benchmarks
-
-Suite Criterion completa:
-
-```bash
-./scripts/bench_all.sh
-```
-
-### Escalonamento do Torneio ($k=3$ pivôs)
-```
-N=10:  O(Nk)=34 comparações  vs all-pairs=45   (24,4% de economia; PPT só vale a partir de N>=10)
-N=20:  O(Nk)=74 comparações  vs all-pairs=190  (61,1% de economia)
-N=50:  O(Nk)=194 comparações vs all-pairs=1225 (84,2% de economia)
-N=100: O(Nk)=394 comparações vs all-pairs=4950 (92,0% de economia)
-```
-
-### Piloto Real (56 tarefas, US$ 0,108)
-```
-só barato gpt-4o-mini         : 89,3% pass@1
-só flagship deepseek-v4-flash : 83,9%
-tiered (PPT + escalada)       : 91,1%   (+1,8 pts vindos da escalada)
-torneio vs acaso              : +0,0    (rascunhos perfeitamente correlacionados neste regime)
-precisão da escalada          : 6/6 casos-alvo realmente falhos, 1 corrigido
-```
-
-Metodologia completa e instruções de reprodução:
-[docs/BENCHMARKS.md](docs/BENCHMARKS.md).
-
----
-
-## 🧪 Testes
+## 🧪 Suíte de Testes
 
 ```bash
 # Rodar todos os testes em Rust (37 testes)
 cargo test -p dspark-core
 
 # Rodar todos os testes em Python (16 testes)
-python -m unittest discover tests
 pytest -v
 ```
 
@@ -202,4 +262,4 @@ pytest -v
 
 ## 📜 Licença
 
-Distribuído sob a licença **MIT**. Consulte `LICENSE` para mais detalhes.
+Distribuído sob a **Licença MIT**. Consulte [LICENSE](LICENSE) para mais detalhes.

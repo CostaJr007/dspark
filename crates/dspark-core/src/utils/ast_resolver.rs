@@ -214,6 +214,14 @@ impl TreeSitterResolver {
     pub fn new() -> Self {
         Self
     }
+
+    pub fn resolve(&self, code_blocks: &[CodeBlock], language: &str) -> (DependencyGraph, bool) {
+        DependencyResolver::resolve(self, code_blocks, language)
+    }
+
+    pub fn split_into_blocks(&self, source: &str) -> Vec<CodeBlock> {
+        DependencyResolver::split_into_blocks(self, source)
+    }
 }
 
 #[cfg(feature = "tree-sitter-ast")]
