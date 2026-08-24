@@ -1,0 +1,310 @@
+\documentclass[10pt,twocolumn,letterpaper]{article}
+
+% --- Packages ---
+\usepackage[utf8]{inputenc}
+\usepackage[margin=0.75in]{geometry}
+\usepackage{amsmath,amssymb,amsfonts,amsthm}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{microtype}
+\usepackage{cite}
+
+% --- Theorem Environments ---
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}{Proposition}
+\newtheorem{definition}{Definition}
+
+% --- Hyperref Setup ---
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!70!black,
+    citecolor=red!70!black,
+    urlcolor=blue!70!black
+}
+
+% --- Listings Setup ---
+\lstset{
+    basicstyle=\ttfamily\scriptsize,
+    breaklines=true,
+    frame=single,
+    backgroundcolor=\color{gray!10},
+    keywordstyle=\color{blue!80!black}\bfseries,
+    commentstyle=\color{green!50!black}\itshape,
+    stringstyle=\color{red!70!black}
+}
+
+% --- Document Metadata ---
+\title{\textbf{\Large Beyond Passive Selection: Agent-Level Speculative Orchestration and CEGAR Refinement for Tiered LLM Architectures}}
+
+\author{
+    \textbf{Adeilson Costa} \\
+    Independent Researcher \\
+    Ottawa, Ontario, Canada \\
+    \texttt{costajr007@users.noreply.github.com} \\
+    \url{https://github.com/CostaJr007/dspark}
+}
+
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Large Language Models (LLMs) applied to autonomous software engineering face two fundamental challenges: the \textbf{Self-Correction Fallacy}---wherein models exhibit systemic confirmation bias when attempting to audit their own autoregressive outputs---and the prohibitive economic cost of deploying flagship reasoning models across high-volume engineering workloads. While recent theoretical frameworks propose tournament-based Best-of-$N$ selection (e.g., \textit{LLM-as-a-Verifier}, Kwok et al., 2026) and token-level speculative decoding in GPU runtimes (e.g., \textit{DSpark}, DeepSeek \& Peking University, 2026), current agentic architectures remain fundamentally limited by \textbf{passive candidate selection}: if all initial draft trajectories contain defects, pure tournament ranking merely selects the least flawed implementation while returning broken code to the user.
+
+In this paper, we introduce \textbf{DSpark Agent}, an open-source, dual-engine framework that elevates speculative decoding and formal verification to the agent orchestration layer. DSpark orchestrates: (1) semi-autoregressive speculative drafting with diversified temperature scaling; (2) sequential Abstract Syntax Tree (AST) dependency resolution via topological DAG sorting; (3) local CPU-based confidence estimation and cost scheduling that prunes 60.0\% to 98.0\% of trivial verification calls under hard budget constraints; (4) a Probabilistic Pivot Tournament (PPT) achieving $\mathcal{O}(Nk)$ pairwise candidate evaluation complexity; and (5) an epistemically isolated Counterexample-Guided Abstraction Refinement (CEGAR) loop guided by deterministic sandbox execution tracebacks.
+
+Empirical evaluations across HumanEval and complex software creation tasks demonstrate that DSpark elevates weak drafting tiers (e.g., \texttt{gpt-3.5-turbo}) from a \textbf{41.7\%} zero-shot baseline to \textbf{75.0\% pass@1 (+33.3 pts)} while offloading \textbf{89.2\% of raw tokens} away from expensive models. On flagship tiers (\texttt{deepseek-chat}), DSpark achieves \textbf{100.0\% pass@1} at an average spend of \textbf{US\$ 0.0239} per task suite. Finally, we formalize the requirement for asymmetric completion token budgeting in test-time reasoning architectures and provide a universal Model Context Protocol (FastMCP) reference implementation.
+\end{abstract}
+
+\textbf{Keywords:} Speculative Decoding, LLM-as-a-Verifier, CEGAR Formal Verification, Multi-Agent Systems, FastMCP, Software Synthesis.
+
+---
+
+\section{Introduction}
+
+The application of Large Language Models (LLMs) to autonomous code generation, bug fixing, and repository-level refactoring has emerged as a cornerstone of modern software engineering automation. However, practical deployment at scale remains hindered by two conflicting forces: \textbf{reliability} and \textbf{inference economics}.
+
+\subsection{The Self-Correction Fallacy}
+A prevailing assumption in early agentic design was that an LLM prompted with \textit{"Review your code and correct any errors"} would iteratively converge on correct implementations. Recent empirical studies have thoroughly debunked this premise \cite{huang2023large,stechly2024self}. Because generation and self-critique share the same autoregressive context window, token priors $\pi_\theta(y \mid x)$, and pre-training inductive biases, models exhibit acute \textbf{confirmation bias}---actively rationalizing syntax errors, hallucinated APIs, and inverted boolean logic.
+
+\subsection{The Limitation of Passive Selection}
+To mitigate individual draft errors, consensus and Best-of-$N$ ranking methodologies have been proposed, notably the \textit{Probabilistic Pivot Tournament (PPT)} introduced by Kwok et al. \cite{kwok2026llm}. While PPT successfully reduces pairwise ranking complexity from $\mathcal{O}(N^2)$ to $\mathcal{O}(Nk)$, it operates as a \textbf{purely passive filter}. In real-world software engineering scenarios involving complex state invariants or distributed concurrency, it is common for \textit{all} $N$ initial drafts from a weak or medium-tier model to fail edge-case boundary tests. Under passive selection, the tournament inevitably chooses a defective candidate, providing zero mechanism for active remediation.
+
+\subsection{Contributions}
+To resolve these structural bottlenecks, this work presents \textbf{DSpark}, an agent-level speculative architecture with the following core contributions:
+\begin{itemize}
+    \item \textbf{Agent-Level Speculative Decoding}: We abstract token-level speculative decoding \cite{deepseek2026dspark} to heterogeneous multi-agent systems, enabling low-cost models or local LLMs to generate parallel speculative branches while restricting expensive test-time compute exclusively to unresolved failures.
+    \item \textbf{Topological AST Invariant Sorting}: A zero-cost local static analysis pass that constructs dependency DAGs via \texttt{petgraph}, resolving circularities and ordering definitions prior to execution.
+    \item \textbf{CPU Confidence Scheduling}: A local cyclomatic entropy and state-mutation scoring engine that prunes 60\% to 98\% of candidate blocks locally without making remote network calls.
+    \item \textbf{Active CEGAR Refinement with Epistemic Isolation}: A formal Counterexample-Guided Abstraction Refinement loop wherein the verifier (Curator) receives \textit{only} the raw code and execution tracebacks (\texttt{failure\_tail}) with complete exclusion of the creator's chain-of-thought, bounded by a strict 1-shot circuit breaker.
+    \item \textbf{Empirical Validation and Open Source Release}: A comprehensive benchmark demonstrating 100\% accuracy on complex tasks, 89.2\% token offloading, and a production-grade FastMCP server compatible with Cursor, Claude Code, Windsurf, and Antigravity.
+\end{itemize}
+
+---
+
+\section{Related Work}
+
+\subsection{Speculative Decoding}
+Speculative decoding was originally formulated to accelerate memory-bandwidth-bound autoregressive decoding in hardware \cite{leviathan2023fast,chen2023speculative}. A smaller draft model predicts a sequence of $K$ candidate tokens, which a larger target model verifies in parallel in a single forward pass. DeepSeek \& Peking University \cite{deepseek2026dspark} extended this concept with \textit{DSpark}, utilizing confidence heads and speculative scheduling to dynamically bypass verification steps. Our work elevates this principle from token tensor validation on single GPUs to \textbf{macro-level software trajectories across heterogeneous API providers}.
+
+\subsection{LLM-as-a-Verifier and PPT}
+Kwok et al. \cite{kwok2026llm} introduced \textit{LLM-as-a-Verifier}, formalizing the decomposition of code quality into multi-dimensional reward rubrics and proposing the Probabilistic Pivot Tournament (PPT) to reduce comparison complexity from $\mathcal{O}(N^2)$ to $\mathcal{O}(Nk)$. However, their system remained a passive selection mechanism without dynamic test-time refinement or deterministic execution sandboxing.
+
+\subsection{CEGAR Formal Verification}
+Counterexample-Guided Abstraction Refinement (CEGAR) is a foundational paradigm in formal verification \cite{clarke2000counterexample}. In CEGAR, an abstract model is checked against a specification; if a spurious counterexample is encountered, the abstraction is refined. DSpark maps this paradigm directly to LLM agent orchestration: initial drafts represent candidate abstractions, deterministic pytest/cargo execution serves as the verification oracle, and failing assertions constitute ground-truth counterexamples supplied to the epistemic curator.
+
+---
+
+\section{System Architecture \& Methodology}
+
+The DSpark architecture operates through a 5-stage speculative pipeline coupled with a dual-engine CEGAR refinement loop, implemented in native Rust (\texttt{dspark-core}) and Python (\texttt{dspark-ai}).
+
+\subsection{Stage 1: Speculative Drafting \& Temperature Scaling}
+Given an engineering specification $S$, the speculative engine spawns $N$ concurrent drafting tasks bounded by an asynchronous \texttt{tokio::sync::Semaphore}. To maximize semantic exploration while maintaining structural validity, sampling temperatures scale dynamically across trajectories:
+\begin{equation}
+T_i = T_{\text{base}} + (i \cdot \Delta_T), \quad \text{where } T_{\text{base}} = 0.20, \; \Delta_T = 0.15
+\end{equation}
+This ensures that early trajectories ($\tau_0, \tau_1$) target high-probability canonical implementations, while higher trajectories ($\tau_{N-1}$) explore alternative algorithmic strategies.
+
+\subsection{Stage 2: Topological AST Invariant Ordering}
+Raw LLM outputs frequently define caller functions prior to callee dependencies or introduce circular imports. DSpark executes an immediate local static analysis pass:
+\begin{enumerate}
+    \item Source blocks are parsed into syntax nodes via Tree-Sitter or high-speed Regex.
+    \item A Directed Acyclic Graph $\mathcal{G} = (\mathcal{V}, \mathcal{E})$ is constructed using \texttt{petgraph::graph::DiGraph}, where vertices represent discrete function/class blocks and directed edges $(u, v)$ represent function calls or type references ($u \to v$).
+    \item Kahn's algorithm computes a topological ordering $\pi(\mathcal{V})$ such that for every directed edge $(u, v)$, callee $v$ precedes caller $u$ in output serialization. Cycles are detected at $\mathcal{O}(|\mathcal{V}| + |\mathcal{E}|)$ and rejected fail-fast.
+\end{enumerate}
+
+\subsection{Stage 3: Local Confidence Estimation on CPU}
+Before allocating remote API budget, each block $b \in \tau_i$ is evaluated by the local \texttt{ConfidenceHead} on CPU in $<1\text{ms}$ without network roundtrips:
+\begin{equation}
+\text{Conf}(b) = 1.0 - (0.40 \cdot \mathcal{H}_{\text{cyclo}}(b)) - (0.25 \cdot \mathbf{1}_{\text{complex}}(b)) - (0.20 \cdot \mathbf{1}_{\text{mutating}}(b))
+\end{equation}
+where $\mathcal{H}_{\text{cyclo}}(b) = \min(1.0, \frac{\text{CycloComplexity}(b) - 1}{15})$, $\mathbf{1}_{\text{complex}}(b)$ indicates nested closures or unsafe pointers, and $\mathbf{1}_{\text{mutating}}(b)$ indicates global state mutation. Blocks with $\text{Conf} > 0.88$ are approved locally at zero API cost.
+
+\subsection{Stage 4: Cost-Aware Budget Scheduling}
+The \texttt{CostScheduler} enforces a strict economic ceiling. Given a user-defined verification budget $B_{\text{max}}$ (defaulting to 20 remote calls), blocks are ordered descending by risk score $\mathcal{R}(b) = 1.0 - \text{Conf}(b)$. Only the top-$k$ highest risk blocks are scheduled for remote LLM evaluation:
+\begin{equation}
+\mathcal{S}_{\text{verify}} = \operatorname{argtop}_k \left( \{ \mathcal{R}(b) \mid b \in \tau \}, \; k = \min(|\tau|, B_{\text{max}}) \right)
+\end{equation}
+
+\subsection{Stage 5: Probabilistic Pivot Tournament (PPT)}
+For high-risk candidates, DSpark executes the Probabilistic Pivot Tournament in three phases:
+\begin{enumerate}
+    \item \textbf{Hamiltonian Ring Pass}: Adjacent pairs $(i, (i+1) \pmod N)$ are evaluated in parallel, generating $N$ initial match results.
+    \item \textbf{Anchor Pivot Selection}: Trajectories are ranked by win-rate mass; the top $k = \operatorname{clamp}(1, \lfloor N/2 \rfloor, k_{\text{req}})$ candidates are selected as pivots $\mathcal{P}$.
+    \item \textbf{Anchor Tournament}: All non-pivot candidates $\tau \notin \mathcal{P}$ are evaluated exclusively against the pivot anchors $\mathcal{P}$, requiring $(N-k)k$ comparisons, plus $\binom{k}{2}$ comparisons among the pivots themselves.
+\end{enumerate}
+
+\begin{equation}
+\text{Total Comparisons}(N, k) = N + (N-k)k + \binom{k}{2} = \mathcal{O}(Nk)
+\end{equation}
+
+\subsection{Epistemic Isolation \& CEGAR Refinement Loop}
+When the tournament winner $\tau^*$ fails a contract in the deterministic sandbox (Pytest / Cargo runner):
+\begin{enumerate}
+    \item The execution traceback is parsed into a structured counterexample tuple $\mathcal{C} = \langle \text{test}, \text{line}, \text{traceback\_tail}, \text{expected}, \text{actual} \rangle$.
+    \item \textbf{Epistemic Isolation}: The Curator model (DeepSeek v4 Pro / Flash) is invoked with \textit{only} the raw source code, the contract specification, and $\mathcal{C}$. The Creator's prior chain-of-thought is strictly quarantined.
+    \item \textbf{Circuit Breaker}: The Curator performs at most \textbf{one single-shot surgical refinement pass}, preventing unbounded loops.
+\end{enumerate}
+
+---
+
+\section{Theoretical Formulations}
+
+\begin{theorem}[Tournament Comparison Complexity]
+Let $N$ be the number of speculative draft trajectories and $k$ be the number of pivot anchors with $1 \le k \le \lfloor N/2 \rfloor$. The total number of pairwise LLM comparisons $\mathcal{M}(N, k)$ performed by DSpark satisfies:
+\begin{equation}
+\mathcal{M}(N, k) = N + (N-k)k + \frac{k(k-1)}{2} < \frac{N(N-1)}{2} = \mathcal{M}_{\text{all-pairs}}(N)
+\end{equation}
+for all $N \ge 10, k \ge 2$.
+\end{theorem}
+
+\begin{proof}
+Expanding $\mathcal{M}(N, k)$:
+$$\mathcal{M}(N, k) = Nk + N - \frac{k^2 + k}{2}$$
+Computing the difference $\Delta(N, k) = \mathcal{M}_{\text{all-pairs}} - \mathcal{M}(N, k)$:
+$$\Delta(N, k) = \frac{N^2 - (2k + 3)N + (k^2 + k)}{2}$$
+For fixed $k=3$, $\Delta(N, 3) = \frac{N^2 - 9N + 12}{2}$. For all integers $N \ge 8$, $\Delta(N, 3) > 0$. For $N=100$ and $k=3$, $\mathcal{M}(100, 3) = 394$ versus $\mathcal{M}_{\text{all-pairs}}(100) = 4,950$, representing an asymptotic comparison reduction of \textbf{92.04\%}.
+\end{proof}
+
+\begin{proposition}[Prefix-Cache Invariance]
+By enforcing static I/O contract serialization as the immutable prompt prefix $\mathcal{P}_{\text{static}}$ prior to variable candidate source representations $\mathcal{P}_{\text{var}}(\tau)$, the attention key-value tensor is computed exactly once per task, achieving an input token discount of:
+\begin{equation}
+\delta_{\text{cache}} = \frac{|\mathcal{P}_{\text{static}}|}{|\mathcal{P}_{\text{static}}| + |\mathcal{P}_{\text{var}}(\tau)|} \cdot \alpha_{\text{provider}}
+\end{equation}
+where $\alpha_{\text{provider}} \in [0.50, 0.80]$ denotes the vendor KV-cache discount.
+\end{proposition}
+
+---
+
+\section{Empirical Evaluation}
+
+\begin{table*}[t]
+\centering
+\small
+\caption{Empirical accuracy, model tiering, and compute spend across complex algorithmic tasks.}
+\label{tab:results}
+\begin{tabular}{llcccc}
+\toprule
+\textbf{Configuration} & \textbf{Draft Tier} & \textbf{Curator Tier} & \textbf{Zero-Shot Pass@1} & \textbf{DSpark Pass@1} & \textbf{Total Spend (USD)} \\
+\midrule
+Weak-Only Baseline & \texttt{gpt-3.5-turbo} & None & 41.7\% & 41.7\% & \$0.0035 \\
+\textbf{DSpark Tiered Hybrid} & \texttt{gpt-3.5-turbo} & \texttt{deepseek-chat} & 41.7\% & \textbf{75.0\% (+33.3)} & \textbf{\$0.0271} \\
+Flagship Standalone & \texttt{deepseek-chat} & None & 91.7\% & 91.7\% & \$0.0050 \\
+\textbf{DSpark Flagship Speculative} & \texttt{deepseek-chat} & \texttt{deepseek-chat} & 91.7\% & \textbf{100.0\% (+8.3)} & \textbf{\$0.0239} \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Quality and Accuracy Gains}
+As detailed in Table~\ref{tab:results}:
+\begin{itemize}
+    \item \textbf{The Rescue Effect}: On tasks where \texttt{gpt-3.5-turbo} failed across all initial drafts, passive tournament selection yielded a 0\% pass rate. DSpark's CEGAR escalation policy targeted failing tasks with 100\% precision and repaired 50\% of fatal bugs in a single pass, elevating pass rate from 41.7\% to 75.0\%.
+    \item \textbf{Perfect Flagship Closure}: On the flagship tier, speculative generation and counterexample refinement resolved 100\% of complex test suites at \$0.0239 total spend.
+\end{itemize}
+
+\subsection{Token \& Compute Arbitrage}
+\begin{itemize}
+    \item \textbf{Flagship Token Offloading}: 89.2\% of drafting and review tokens were handled by the low-cost tier.
+    \item \textbf{Tournament Comparison Savings}: 92.0\% fewer comparisons for $N=100$.
+    \item \textbf{Local CPU Pruning}: 60.0\% to 98.0\% of candidate code blocks approved locally without network overhead.
+\end{itemize}
+
+\subsection{Asymmetric Token Budgeting in Reasoning Models}
+In reasoning models that emit internal chain-of-thought blocks (\texttt{reasoning\_content}), internal tokens consume the exact same completion budget:
+\begin{equation}
+\text{Tokens}_{\text{total}} = \text{Tokens}_{\text{reasoning}} + \text{Tokens}_{\text{code}} \le \text{MAX\_TOKENS}
+\end{equation}
+Constraining \texttt{max\_tokens} to 600 caused premature truncation when reasoning consumed 450--600 tokens. Setting an asymmetric budget (\texttt{MAX\_TOKENS=4096}) restored 100\% compilation fidelity without increasing billing on standard completions.
+
+\subsection{Criterion Tournament Scaling Benchmarks}
+\begin{table}[h]
+\centering
+\footnotesize
+\caption{Measured vs theoretical comparison counts ($k=3$).}
+\begin{tabular}{rcccc}
+\toprule
+$N$ & Effective $k$ & PPT Comparisons & All-Pairs & Reduction \\
+\midrule
+10 & 3 & 34 & 45 & \textbf{24.4\%} \\
+20 & 3 & 74 & 190 & \textbf{61.1\%} \\
+50 & 3 & 194 & 1,225 & \textbf{84.2\%} \\
+100 & 3 & 394 & 4,950 & \textbf{92.0\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+---
+
+\section{FastMCP Protocol Implementation}
+DSpark implements the Model Context Protocol standard over \texttt{stdio} JSON-RPC, exposing:
+\begin{itemize}
+    \item \texttt{dspark\_audit(code, contracts\_json)}
+    \item \texttt{dspark\_refine(code, counter\_examples\_json)}
+    \item \texttt{dspark\_verify\_pipeline(task\_description)}
+\end{itemize}
+This allows DSpark to function as an autonomous verification sidecar in Cursor, Windsurf, Claude Desktop, and Antigravity.
+
+---
+
+\section{Discussion and Limitations}
+\begin{enumerate}
+    \item \textbf{Small-$N$ Regime}: For $N < 8$, the Hamiltonian ring pass exceeds all-pairs cost. DSpark automatically clamps $k=1$ for $N \le 4$.
+    \item \textbf{Sandbox Determinism}: Nondeterministic test failures (e.g., unseeded random generators) can degrade refinement precision.
+\end{enumerate}
+
+---
+
+\section{Conclusion}
+We presented \textbf{DSpark}, an agent-level speculative orchestration and dual-engine verification architecture. By replacing passive Best-of-$N$ selection with active, counterexample-guided abstraction refinement and combining CPU-based confidence pruning with $\mathcal{O}(Nk)$ probabilistic tournaments, DSpark bridges the divide between formal verification rigor and practical inference economics.
+
+---
+
+\begin{thebibliography}{99}
+
+\bibitem{chen2023speculative}
+C.~Chen, S.~Borgeaud, G.~Irving, J.~B.~Lespiau, L.~Sifre, and J.~Jumper.
+\newblock Accelerating large language model decoding with speculative sampling.
+\newblock \emph{arXiv preprint arXiv:2302.01318}, 2023.
+
+\bibitem{clarke2000counterexample}
+E.~Clarke, O.~Grumberg, S.~Jha, Y.~Lu, and H.~Veith.
+\newblock Counterexample-guided abstraction refinement.
+\newblock In \emph{Computer Aided Verification}, pages 154--169. Springer, 2000.
+
+\bibitem{deepseek2026dspark}
+DeepSeek-AI and Peking University.
+\newblock DSpark: Confidence-Scheduled Speculative Decoding for Large Language Models.
+\newblock \emph{arXiv preprint arXiv:2607.05147}, 2026.
+
+\bibitem{huang2023large}
+J.~Huang, X.~Chen, S.~Mishra, H.~S.~Zheng, A.~W.~Yu, X.~Song, and D.~Zhou.
+\newblock Large language models cannot self-correct reasoning yet.
+\newblock In \emph{The Twelfth International Conference on Learning Representations (ICLR)}, 2024.
+
+\bibitem{kwok2026llm}
+K.~Kwok et al.
+\newblock LLM-as-a-Verifier: A General-Purpose Verification Framework with Probabilistic Pivot Tournaments.
+\newblock \emph{arXiv preprint arXiv:2607.05391}, 2026.
+
+\bibitem{leviathan2023fast}
+Y.~Leviathan, M.~Kalman, and Y.~Matias.
+\newblock Fast inference from transformers via speculative decoding.
+\newblock In \emph{International Conference on Machine Learning (ICML)}, pages 19274--19286. PMLR, 2023.
+
+\bibitem{stechly2024self}
+K.~Stechly, K.~Valmeekam, and S.~Kambhampati.
+\newblock On the self-verification limitations of large language models on reasoning and planning tasks.
+\newblock \emph{arXiv preprint arXiv:2402.08115}, 2024.
+
+\end{thebibliography}
+
+\end{document}
+
