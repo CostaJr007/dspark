@@ -10,9 +10,9 @@
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange)](https://rust-lang.org)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
-[![MCP](https://img.shields.io/badge/MCP-FastMCP%202.0-purple)](docs/GETTING_STARTED.md#5-integrating-with-ides-via-mcp)
+[![Paper](https://img.shields.io/badge/paper-Preprint%20PDF%2FMD-red)](docs/PAPER.md)
 
-[📚 Documentation](docs/) • [🚀 Quick Start](#-quick-start) • [📊 Benchmarks](docs/BENCHMARKS.md) • [🔌 MCP IDE Setup](#-ide--mcp-integration) • [🤝 Contributing](docs/CONTRIBUTING.md)
+[📑 Research Paper](docs/PAPER.md) • [📚 Documentation](docs/) • [🚀 Quick Start](#-quick-start) • [📊 Benchmarks](docs/BENCHMARKS.md) • [🔌 MCP IDE Setup](#-ide--mcp-integration) • [🤝 Contributing](docs/CONTRIBUTING.md)
 
 </div>
 
@@ -246,6 +246,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 | Guide | Description |
 | :--- | :--- |
+| [📑 Research Paper](docs/PAPER.md) | **"Beyond Passive Selection: Agent-Level Speculative Orchestration and CEGAR Refinement"** (Preprint) |
 | [🏛️ Architecture](docs/ARCHITECTURE.md) | In-depth engineering specifications of the 5-stage pipeline and CEGAR loop |
 | [🚀 Getting Started](docs/GETTING_STARTED.md) | Step-by-step setup, configuration, and IDE integration guide |
 | [📊 Benchmarks & Methodology](docs/BENCHMARKS.md) | Criterion scaling benchmarks, pilot results, and token economics |
