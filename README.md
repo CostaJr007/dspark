@@ -269,6 +269,13 @@ pytest -v
 
 ---
 
+## 📜 Attribution & Lineage
+
+> [!NOTE]
+> **Lineage & Evolution**: This project originated as an advanced evolution and fork of open-source terminal agent scaffolding (including Grok/xAI-inspired CLI paradigms), re-architected from the ground up into a production-grade **Agent-Level Speculative Orchestration Engine** with native Rust acceleration (`dspark-core`), CEGAR formal contract verification, FastMCP protocol support, and DeepSeek v4 dual-engine curation.
+
+---
+
 ## 📜 License
 
 Distributed under the **MIT License**. See [LICENSE](LICENSE) for details.
