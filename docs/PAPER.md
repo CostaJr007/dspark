@@ -29,17 +29,14 @@ The application of Large Language Models (LLMs) to autonomous code generation, b
 ### 1.1 The Self-Correction Fallacy
 A prevailing assumption in early agentic design was that an LLM prompted with *"Review your code and correct any errors"* would iteratively converge on correct implementations. Recent empirical studies have thoroughly debunked this premise (*Huang et al., 2023*; *Stechly et al., 2024*). Because generation and self-critique share the same autoregressive context window, token priors $\pi_\theta(y \mid x)$, and pre-training inductive biases, models exhibit acute **confirmation bias**—actively rationalizing syntax errors, hallucinated APIs, and inverted boolean logic.
 
-```
-                  ┌────────────────────────────────────────┐
-                  │       Single-Model Autoregressive      │
-                  │              Echo Chamber              │
-                  ├────────────────────────────────────────┤
-                  │  Prompt ──► Draft ──► "Are you sure?"  │
-                  │               │            │           │
-                  │               ▼            ▼           │
-                  │       Confirmation Bias Affirmation    │
-                  │      (Shared Attention / Token Priors) │
-                  └────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph SingleModel["Single-Model Autoregressive Echo Chamber"]
+        direction TB
+        Prompt["User Prompt"] --> Draft["Initial Code Generation"]
+        Draft --> Review["Self-Critique: 'Are you sure this is correct?'"]
+        Review -->|"Shared Attention & Token Priors"| Bias["Confirmation Bias: Affirmation of Hallucinations"]
+    end
 ```
 
 ### 1.2 The Limitation of Passive Selection
@@ -147,18 +144,51 @@ For high-risk candidates, DSpark executes the Probabilistic Pivot Tournament in 
 
 $$\text{Total Comparisons}(N, k) = N + (N-k)k + \binom{k}{2} = \mathcal{O}(Nk)$$
 
-```
-                                  PPT Tournament Structure (N=5, k=2)
-                                  
-          Ring Pass (5 comparisons)             Anchor Tournament (6 + 1 comparisons)
-          
-                 [ Draft 0 ]                                [ Draft 0 (Pivot 1) ]
-                 ▲         │                                  ▲     ▲     ▲
-                │           ▼                                │       │     │
-          [ Draft 4 ]     [ Draft 1 ]                [ Draft 2 ] [ Draft 3 ] [ Draft 4 ]
-                ▲           │                                │       │     │
-                 │         ▼                                  ▼     ▼     ▼
-          [ Draft 3 ] ──► [ Draft 2 ]                       [ Draft 1 (Pivot 2) ]
+```mermaid
+flowchart TB
+    subgraph PPT["Probabilistic Pivot Tournament Structure (N=5 Trajectories, k=2 Pivot Anchors)"]
+        direction LR
+
+        subgraph Phase1["Phase 1: Hamiltonian Ring Pass (5 Matches)"]
+            direction TB
+            D0["Draft 0"] -->|"Match 1"| D1["Draft 1"]
+            D1 -->|"Match 2"| D2["Draft 2"]
+            D2 -->|"Match 3"| D3["Draft 3"]
+            D3 -->|"Match 4"| D4["Draft 4"]
+            D4 -->|"Match 5"| D0
+        end
+
+        subgraph Phase2["Phase 2: Pivot Selection"]
+            direction TB
+            R1["Rank Candidates by Win Mass"] --> TopK["Select Top-2 Anchors"]
+            TopK --> P1["Anchor 1: Draft 0"]
+            TopK --> P2["Anchor 2: Draft 1"]
+        end
+
+        subgraph Phase3["Phase 3: Anchor Tournament (6 + 1 Matches)"]
+            direction TB
+            subgraph NonPivots["Non-Pivot Candidates"]
+                D2b["Draft 2"]
+                D3b["Draft 3"]
+                D4b["Draft 4"]
+            end
+
+            subgraph Anchors["Pivot Anchors"]
+                P1b["Draft 0 (Anchor 1)"]
+                P2b["Draft 1 (Anchor 2)"]
+            end
+
+            D2b -.->|"Compare"| P1b
+            D2b -.->|"Compare"| P2b
+            D3b -.->|"Compare"| P1b
+            D3b -.->|"Compare"| P2b
+            D4b -.->|"Compare"| P1b
+            D4b -.->|"Compare"| P2b
+            P1b <===>|"Inter-Pivot"| P2b
+        end
+
+        Phase1 ==> Phase2 ==> Phase3
+    end
 ```
 
 ### 3.6 Epistemic Isolation & CEGAR Refinement Loop
@@ -251,15 +281,13 @@ $$\text{Tokens}_{\text{total}} = \text{Tokens}_{\text{reasoning}} + \text{Tokens
 
 When `max_tokens` was constrained to 600 tokens during initial pilot runs, the reasoning phase consumed 450–600 tokens, causing premature truncation of the code block and generating spurious syntax errors. Setting an asymmetric per-provider budget ($\text{MAX-TOKENS}=4096$ for reasoning models) immediately restored 100% compilation fidelity without increasing billing cost on simple completions.
 
-```
-       Reasoning Model Token Allocation Dynamics (max_tokens=4096)
-       
-       ┌─────────────────────────────────────────────────────────────┐
-       │   Thinking Budget (~1,200 tokens)   │   Code (~400 tokens)  │
-       └─────────────────────────────────────────────────────────────┘
-       ▲                                     ▲                       ▲
-       0                                   1,200                   1,600 (Total Spent)
-                                                                     [Headroom: 2,496]
+```mermaid
+flowchart LR
+    subgraph TotalCapacity["Asymmetric Token Budget (MAX-TOKENS = 4096)"]
+        direction LR
+        Reasoning["🧠 Reasoning / Thinking Tokens (~1,200 tokens)"] --> Code["💻 Generated Code (~400 tokens)"]
+        Code --> Headroom["🛡️ Safe Completion Headroom (2,496 tokens remaining)"]
+    end
 ```
 
 ### 5.4 Tournament Scaling Empirical Validation
