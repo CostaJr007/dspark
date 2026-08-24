@@ -185,8 +185,7 @@ pub fn filter_expired_at(
         .collect()
 }
 
-/// Drop xAI/Grok marketing banners (e.g. "Grok 4.6 is here") so the DSpark
-/// TUI never shows the upstream product promo.
+/// Filter external promotional announcements and vendor marketing banners.
 fn is_vendor_promo(a: &RemoteAnnouncement) -> bool {
     let cta = a
         .cta

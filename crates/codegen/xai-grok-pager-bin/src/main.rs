@@ -2337,7 +2337,7 @@ fn build_update_config() -> UpdateConfig {
 /// Central gate for auto-update checks; add new suppression rules here,
 /// not at call sites.
 fn should_check_for_updates(_no_auto_update_flag: bool) -> bool {
-    // DSpark is a rebranded fork. Never pull official grok updates into this binary.
+    // Automated remote binary update checks are disabled.
     false
 }
 /// Gate for the stdio agent's background auto-update: only the direct stdio
