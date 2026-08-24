@@ -2,7 +2,7 @@
 
 **Adeilson Costa**  
 *Independent Researcher, Ottawa, Ontario, Canada*  
-`costajr007@users.noreply.github.com`  
+`Adeilsonjc@gmail.com`  
 **Repository:** [https://github.com/CostaJr007/dspark](https://github.com/CostaJr007/dspark)
 
 ---
