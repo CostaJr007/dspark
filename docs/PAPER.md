@@ -136,13 +136,13 @@ Blocks with $\text{Confidence} > 0.88$ (such as pure getters, data classes, and 
 
 ### 3.4 Stage 4: Cost-Aware Budget Scheduling
 The `CostScheduler` enforces a strict economic ceiling. Given a user-defined verification budget $B_{\text{max}}$ (defaulting to 20 remote calls), blocks are ordered descending by risk score $\mathcal{R}(b) = 1.0 - \text{Confidence}(b)$. Only the top-$k$ highest risk blocks are scheduled for remote LLM evaluation:
-$$\mathcal{S}_{\text{verify}} = \operatorname{argtop}_k \left( \{ \mathcal{R}(b) \mid b \in \tau \}, \; k = \min(|\tau|, B_{\text{max}}) \right)$$
+$$\mathcal{S}_{\text{verify}} = \mathrm{argtop}_k \left( \{ \mathcal{R}(b) \mid b \in \tau \}, \; k = \min(|\tau|, B_{\text{max}}) \right)$$
 This deterministic pruning guarantees a hard spend ceiling regardless of input size.
 
 ### 3.5 Stage 5: Probabilistic Pivot Tournament (PPT)
 For high-risk candidates, DSpark executes the Probabilistic Pivot Tournament in three phases:
 1. **Hamiltonian Ring Pass**: Adjacent pairs $(i, (i+1) \pmod N)$ are evaluated in parallel, generating $N$ initial match results.
-2. **Anchor Pivot Selection**: Trajectories are ranked by win-rate mass; the top $k = \operatorname{clamp}(1, \lfloor N/2 \rfloor, k_{\text{req}})$ candidates are selected as pivots $\mathcal{P}$.
+2. **Anchor Pivot Selection**: Trajectories are ranked by win-rate mass; the top $k = \mathrm{clamp}(1, \lfloor N/2 \rfloor, k_{\text{req}})$ candidates are selected as pivots $\mathcal{P}$.
 3. **Anchor Tournament**: All non-pivot candidates $\tau \notin \mathcal{P}$ are evaluated exclusively against the pivot anchors $\mathcal{P}$, requiring $(N-k)k$ comparisons, plus $\binom{k}{2}$ comparisons among the pivots themselves.
 
 $$\text{Total Comparisons}(N, k) = N + (N-k)k + \binom{k}{2} = \mathcal{O}(Nk)$$
