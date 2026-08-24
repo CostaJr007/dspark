@@ -111,7 +111,7 @@ flowchart TD
 
 ### 3.1 Stage 1: Speculative Drafting & Temperature Scaling
 Given an engineering specification $S$, the speculative engine spawns $N$ concurrent drafting tasks bounded by an asynchronous `tokio::sync::Semaphore`. To maximize semantic exploration while maintaining structural validity, sampling temperatures scale dynamically across trajectories:
-$$T_i = T_{\text{base}} + (i \cdot \Delta_T), \quad \text{where } T_{\text{base}} = 0.20, \; \Delta_T = 0.15$$
+$$T_i = T_{\mathrm{base}} + (i \cdot \Delta_T), \quad \text{where } T_{\mathrm{base}} = 0.20, \; \Delta_T = 0.15$$
 
 This ensures that early trajectories ($\tau_0, \tau_1$) target high-probability canonical implementations, while higher trajectories ($\tau_{N-1}$) explore alternative algorithmic strategies.
 
@@ -204,22 +204,22 @@ When the tournament winner $\tau^*$ is submitted to the deterministic sandbox (P
 
 ### Theorem 1 (Tournament Comparison Complexity)
 *Let $N$ be the number of speculative draft trajectories and $k$ be the number of pivot anchors with $1 \le k \le \lfloor N/2 \rfloor$. The total number of pairwise LLM comparisons $\mathcal{M}(N, k)$ performed by DSpark satisfies:*
-$$\mathcal{M}(N, k) = N + (N-k)k + \frac{k(k-1)}{2} < \frac{N(N-1)}{2} = \mathcal{M}_{\text{all-pairs}}(N), \quad \forall N \ge 10, \; k \ge 2$$
+$$\mathcal{M}(N, k) = N + (N-k)k + \frac{k(k-1)}{2} < \frac{N(N-1)}{2} = \mathcal{M}_{\mathrm{all-pairs}}(N), \quad \forall N \ge 10, \; k \ge 2$$
 
 *Proof.*  
-The all-pairs comparison count is $\mathcal{M}_{\text{all-pairs}} = \frac{N^2 - N}{2}$.  
+The all-pairs comparison count is $\mathcal{M}_{\mathrm{all-pairs}} = \frac{N^2 - N}{2}$.  
 For the PPT algorithm, expanding $\mathcal{M}(N, k)$:
 $$\mathcal{M}(N, k) = N + Nk - k^2 + \frac{k^2 - k}{2} = Nk + N - \frac{k^2 + k}{2}$$
-Computing the difference $\Delta(N, k) = \mathcal{M}_{\text{all-pairs}} - \mathcal{M}(N, k)$:
+Computing the difference $\Delta(N, k) = \mathcal{M}_{\mathrm{all-pairs}} - \mathcal{M}(N, k)$:
 $$\Delta(N, k) = \frac{N^2 - N}{2} - \left( Nk + N - \frac{k^2 + k}{2} \right) = \frac{N^2 - (2k + 3)N + (k^2 + k)}{2}$$
 For fixed $k=3$:
 $$\Delta(N, 3) = \frac{N^2 - 9N + 12}{2}$$
-Setting $\Delta(N, 3) > 0$ yields the roots $N \approx \frac{9 \pm \sqrt{81 - 48}}{2} \approx \frac{9 \pm 5.74}{2}$. Thus, for all integers $N \ge 8$, $\Delta(N, 3) > 0$. For $N=100$ and $k=3$, $\mathcal{M}(100, 3) = 394$ versus $\mathcal{M}_{\text{all-pairs}}(100) = 4,950$, representing an asymptotic comparison reduction of **92.04%**. $\blacksquare$
+Setting $\Delta(N, 3) > 0$ yields the roots $N \approx \frac{9 \pm \sqrt{81 - 48}}{2} \approx \frac{9 \pm 5.74}{2}$. Thus, for all integers $N \ge 8$, $\Delta(N, 3) > 0$. For $N=100$ and $k=3$, $\mathcal{M}(100, 3) = 394$ versus $\mathcal{M}_{\mathrm{all-pairs}}(100) = 4,950$, representing an asymptotic comparison reduction of **92.04%**. $\blacksquare$
 
 ### Proposition 1 (Prefix-Cache Invariance)
-*By enforcing static I/O contract serialization as the immutable prompt prefix $\mathcal{P}_{\text{static}}$ prior to variable candidate source representations $\mathcal{P}_{\text{var}}(\tau)$, the attention key-value tensor $\mathbf{K}_{\text{prefix}}, \mathbf{V}_{\text{prefix}}$ is computed exactly once per task, achieving a theoretical input token cost discount of:*
-$$\delta_{\text{cache}} = \frac{|\mathcal{P}_{\text{static}}|}{|\mathcal{P}_{\text{static}}| + |\mathcal{P}_{\text{var}}(\tau)|} \cdot \alpha_{\text{provider}}$$
-*where $\alpha_{\text{provider}} \in [0.50, 0.80]$ denotes the vendor KV-cache hit discount.*
+*By enforcing static I/O contract serialization as the immutable prompt prefix $\mathcal{P}_{\mathrm{static}}$ prior to variable candidate source representations $\mathcal{P}_{\mathrm{var}}(\tau)$, the attention key-value tensor $\mathbf{K}_{\mathrm{prefix}}, \mathbf{V}_{\mathrm{prefix}}$ is computed exactly once per task, achieving a theoretical input token cost discount of:*
+$$\delta_{\mathrm{cache}} = \frac{|\mathcal{P}_{\mathrm{static}}|}{|\mathcal{P}_{\mathrm{static}}| + |\mathcal{P}_{\mathrm{var}}(\tau)|} \cdot \alpha_{\mathrm{provider}}$$
+*where $\alpha_{\mathrm{provider}} \in [0.50, 0.80]$ denotes the vendor KV-cache hit discount.*
 
 ---
 
