@@ -12,7 +12,7 @@
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![MCP](https://img.shields.io/badge/MCP-FastMCP%202.0-purple)](docs/GETTING_STARTED.md#5-integrating-with-ides-via-mcp)
 
-[📚 Documentation](docs/) • [🚀 Quick Start](#-quick-start) • [📊 Benchmarks](docs/BENCHMARKS.md) • [🔌 MCP IDE Setup](#-ide--mcp-integration) • [🤝 Contributing](docs/CONTRIBUTING.md) • [🇧🇷 Português](README.pt-BR.md)
+[📚 Documentation](docs/) • [🚀 Quick Start](#-quick-start) • [📊 Benchmarks](docs/BENCHMARKS.md) • [🔌 MCP IDE Setup](#-ide--mcp-integration) • [🤝 Contributing](docs/CONTRIBUTING.md)
 
 </div>
 
@@ -64,9 +64,9 @@ All metrics below are regenerable directly via `python bench/run_real_bench.py` 
 | Configuration | Drafting Tier | Refinement Tier | Zero-Shot Pass@1 | **DSpark Tiered Pass@1** | Total Spend |
 | :--- | :--- | :--- | :---: | :---: | :---: |
 | **Weak Model Alone** | `gpt-3.5-turbo` | None | 41.7% | 41.7% | $0.0035 |
-| **DSpark Tiered Híbrido** | `gpt-3.5-turbo` | `deepseek-chat` | 41.7% | **75.0% (+33.3 pts)** | **$0.0271** |
+| **DSpark Tiered Hybrid** | `gpt-3.5-turbo` | `deepseek-chat` | 41.7% | **75.0% (+33.3 pts)** | **$0.0271** |
 | **Flagship Standalone** | `deepseek-chat` | None (1-shot) | 91.7% | 91.7% | $0.0050 |
-| **DSpark Flagship Speculative** | `deepseek-chat` | `deepseek-chat` | 91.7% | **100.0% (Gabarito)** | **$0.0239** |
+| **DSpark Flagship Speculative** | `deepseek-chat` | `deepseek-chat` | 91.7% | **100.0% (Perfect Score)** | **$0.0239** |
 
 ### 2. Probabilistic Pivot Tournament (PPT) Scaling ($O(Nk)$ vs $O(N^2)$)
 

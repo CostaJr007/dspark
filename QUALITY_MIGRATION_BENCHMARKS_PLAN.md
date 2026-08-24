@@ -1,23 +1,23 @@
-# 🏗️ DSpark: Plano de Qualidade, Migração e Benchmarks
-## Complemento ao MASTER_PLAN_SPECULATIVE_ORCHESTRATION.md
+# 🏗️ DSpark: Quality, Migration, and Benchmarking Plan
+## Complement to MASTER_PLAN_SPECULATIVE_ORCHESTRATION.md
 
-Este documento contém **3 planos de execução completos** para elevar o DSpark ao nível de produção enterprise-grade. Siga na ordem apresentada.
+This document specifies the execution plan for enterprise-grade verification, test coverage, and benchmark methodology for DSpark.
 
 ---
 
-# 📋 PARTE 1: PLANO DE TESTES UNITÁRIOS COMPLETO
+# 📋 PART 1: UNIT TEST SPECIFICATION & COVERAGE TARGETS
 
-## 1.1 Cobertura Alvo por Módulo
+## 1.1 Target Coverage by Module
 
-| Módulo | Linhas | Cobertura Alvo | Prioridade | Complexidade |
+| Module | Lines | Target Coverage | Priority | Complexity |
 |---|---|---|---|---|
-| `pivot_tournament.rs` | 226 | 95% | 🔴 P0 | Alta |
-| `speculative_drafter.rs` | 91 | 90% | 🔴 P0 | Alta |
-| `logprob_extractor.rs` | 136 | 90% | 🟡 P1 | Média |
-| `cost_scheduler.rs` | 78 | 85% | 🟡 P1 | Baixa |
-| `confidence_head.rs` | 118 | 85% | 🟡 P1 | Baixa |
+| `pivot_tournament.rs` | 226 | 95% | 🔴 P0 | High |
+| `speculative_drafter.rs` | 91 | 90% | 🔴 P0 | High |
+| `logprob_extractor.rs` | 136 | 90% | 🟡 P1 | Medium |
+| `cost_scheduler.rs` | 78 | 85% | 🟡 P1 | Low |
+| `confidence_head.rs` | 118 | 85% | 🟡 P1 | Low |
 
-## 1.2 Estrutura de Arquivos de Teste
+## 1.2 Test File Hierarchy
 
 ```
 crates/dspark-core/
@@ -47,18 +47,18 @@ crates/dspark-core/
 
 ---
 
-# 🌲 PARTE 2: MIGRAÇÃO REGEX → TREE-SITTER
+# 🌲 PART 2: REGEX → TREE-SITTER MIGRATION
 
-## 2.1 Justificativa Técnica
-- Suporte a AST preciso, detecção de dependências transitivas e eliminação de falsos positivos em strings/comentários.
-- Feature flags: `default = ["regex-ast"]` para build rápido, `tree-sitter-ast` para verificação rigorosa.
+## 2.1 Technical Rationale
+- Precise syntax tree parsing, transitive dependency detection, and elimination of false positives inside string literals and docstrings.
+- Feature flags: `default = ["regex-ast"]` for lightning-fast compilation, and `tree-sitter-ast` for rigorous semantic verification.
 
 ---
 
-# 📊 PARTE 3: BENCHMARKS COM CRITERION
+# 📊 PART 3: CRITERION BENCHMARK METHODOLOGY
 
-## 3.1 Objetivos dos Benchmarks
-1. Provar O(Nk) vs O(N²) do Pivot Tournament.
-2. Medir ganho de pruning local do Confidence Head (40-70% economia).
-3. Comparar Regex vs Tree-sitter (latência e throughput).
-4. Medir o ganho de KV cache do Prompt Optimizer.
+## 3.1 Benchmark Objectives
+1. Empirically prove $O(Nk)$ vs $O(N^2)$ scaling in the Pivot Tournament.
+2. Measure local pruning rates via the CPU-based Confidence Head (60–98% savings under budget constraints).
+3. Compare Regex vs Tree-Sitter parsing latency and throughput.
+4. Measure prompt prefix-caching hit rates (up to 80% KV cache savings).
