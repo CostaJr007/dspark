@@ -7,7 +7,7 @@ description = "DSpark Core: dual-engine creator/curator with I/O arbitration and
 license = "MIT"
 repository = "https://github.com/CostaJr007/dspark"
 readme = "../../README.md"
-keywords = ["ai", "deepseek", "gemini", "agent", "cli", "mcp"]
+keywords = ["dspark", "dspark-cli", "speculative-decoding", "deepseek", "mcp", "fastmcp"]
 categories = ["command-line-utilities", "development-tools"]
 
 [lib]

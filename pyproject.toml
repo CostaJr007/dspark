@@ -9,6 +9,20 @@ description = "Dual-Engine CEGAR & Adversarial Verification Platform for AI Codi
 readme = "README.md"
 authors = [{ name = "Adeilson Costa", email = "costajr007@users.noreply.github.com" }]
 license = { text = "MIT" }
+keywords = [
+    "dspark",
+    "dspark-cli",
+    "speculative-decoding",
+    "mcp-server",
+    "fastmcp",
+    "deepseek",
+    "cegar",
+    "cursor-mcp",
+    "claude-code",
+    "llm-as-a-verifier",
+    "agentic-coding",
+    "formal-verification"
+]
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
