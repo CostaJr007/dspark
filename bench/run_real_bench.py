@@ -27,6 +27,7 @@ import argparse
 import gzip
 import io
 import json
+import math
 import os
 import random
 import re
@@ -56,7 +57,7 @@ BUDGET_CAP_USD = 0.45  # kill-switch per provider
 # completion-token budget, so the cap must leave room for it (empirically up
 # to ~1.6k chars). A tight cap yields empty/truncated code intermittently.
 MAX_COMPLETION_TOKENS = {"openai": 600, "deepseek": 4096}
-DRAFT_TEMPERATURES = [0.2, 0.5, 0.8]
+DRAFT_TEMPERATURES = [0.1, 0.3, 0.5, 0.7, 0.9]
 N_DRAFTS = len(DRAFT_TEMPERATURES)
 K_PIVOTS_REQUESTED = 2
 TIE_EPSILON = 0.05
@@ -207,19 +208,54 @@ def check_candidate(code: str, task: dict) -> dict:
 
 
 # --------------------------------------------------------------- PPT tournament
-def ppt_compare(a_code: str, b_code: str, spec: str, rng_salt: int, cheap_model: str = "gpt-4o-mini") -> bool:
-    """Returns True when candidate A wins. Cheap-tier judge, temp 0."""
+def _parse_score(text: str, key: str) -> float | None:
+    m = re.search(rf'"{key}"\s*:\s*(\d+)', text.replace("'", '"'))
+    if not m:
+        return None
+    v = int(m.group(1))
+    return v / 20.0 if 1 <= v <= 20 else None
+
+
+def ppt_compare(a_code: str, b_code: str, spec: str, rng_salt: int, cheap_model: str = "gpt-4o-mini") -> tuple[bool | None, float]:
+    """One cheap-tier comparison feeding TWO scoring policies (granularity scaling,
+    LLM-as-a-Verifier Section 4.1): the SAME fine 1-20 scores yield
+      - the DISCRETE judge arm: coarse 1-5 quantization argmax (ties on same bucket);
+      - the CONTINUOUS verifier arm: Bradley-Terry of the fine scores.
+    Falls back to the winner field when scores are absent."""
     prompt = (
         "You are a strict code reviewer. Compare two candidate implementations "
         "against the task requirements.\n\n"
-        f"TASK:\n{spec[:1200]}\n\nCANDIDATE A:\n{a_code[:2200]}\n\n"
-        f"CANDIDATE B:\n{b_code[:2200]}\n\n"
-        'Reply ONLY with JSON: {"winner": "A"} or {"winner": "B"}. '
-        "Judge correctness against requirements first, then robustness."
+        f"TASK:\n{spec[:1500]}\n\nCANDIDATE A:\n{a_code[:3000]}\n\n"
+        f"CANDIDATE B:\n{b_code[:3000]}\n\n"
+        "Rate each candidate on a 1-20 correctness scale "
+        "(1 = incorrect, 10 = borderline, 20 = correct), then judge the winner.\n"
+        'Reply ONLY with JSON: {"winner": "A"|"B"|"EQUAL", "score_A": <1-20>, "score_B": <1-20>}'
     )
     text, _ = chat(cheap_model, [{"role": "user", "content": prompt}], 0.0)
-    b_wins = '"winner": "B"' in text.replace("'", '"') or '"winner":"B"' in text
-    return not b_wins  # mirrors Rust default-bias semantics
+    normalized = text.replace("'", '"')
+
+    sa = _parse_score(normalized, "score_A")
+    sb = _parse_score(normalized, "score_B")
+    if sa is not None and sb is not None:
+        # Discrete arm (G=5): coarse buckets, argmax, ties on the same bucket.
+        bucket_a = round(sa * 20) // 4
+        bucket_b = round(sb * 20) // 4
+        if bucket_a > bucket_b:
+            a_won = True
+        elif bucket_b > bucket_a:
+            a_won = False
+        else:
+            a_won = None  # discrete tie
+        # Continuous arm (G=20): Bradley-Terry of the fine scores.
+        pref_a = 1.0 / (1.0 + math.exp(-(sa - sb)))
+        return a_won, pref_a
+
+    # Fallback for judges that ignore the score fields (legacy winner parsing).
+    b_wins = '"winner": "B"' in normalized or '"winner":"B"' in normalized
+    equal = '"winner": "EQUAL"' in normalized or "EQUAL" in normalized
+    a_won = None if equal else not b_wins
+    pref_a = 0.5 if equal else (1.0 if a_won else 0.0)
+    return a_won, pref_a
 
 
 def tournament_comparison_count(n: int, k_req: int) -> int:
@@ -227,17 +263,25 @@ def tournament_comparison_count(n: int, k_req: int) -> int:
     return n + (n - k) * k + k * (k - 1) // 2
 
 
-def ppt_run(codes: list[str], spec: str, cheap_model: str = "gpt-4o-mini") -> tuple[int, list[tuple[int, float]]]:
-    """Ring pass + pivot tournament. Returns (winner_idx, win_rates)."""
+def ppt_run(codes: list[str], spec: str, cheap_model: str = "gpt-4o-mini") -> tuple[int, int, list, list]:
+    """Ring pass + pivot tournament under BOTH policies on identical calls.
+
+    Returns (winner_discrete, winner_soft, rates_discrete, rates_soft)."""
     n = len(codes)
     k = max(1, min(K_PIVOTS_REQUESTED, max(n // 2, 1)))
-    wins = {i: 0 for i in range(n)}
+    wins_soft = {i: 0.0 for i in range(n)}
+    wins_disc = {i: 0.0 for i in range(n)}
     matches = {i: 0 for i in range(n)}
 
     def match(i: int, j: int) -> None:
-        a_won = ppt_compare(codes[i], codes[j], spec, i * 31 + j, cheap_model=cheap_model)
-        winner, loser = (i, j) if a_won else (j, i)
-        wins[winner] += 1
+        a_won, pref = ppt_compare(codes[i], codes[j], spec, i * 31 + j, cheap_model=cheap_model)
+        if a_won is None:
+            wins_disc[i] += 0.5
+            wins_disc[j] += 0.5
+        else:
+            wins_disc[i if a_won else j] += 1.0
+        wins_soft[i] += pref
+        wins_soft[j] += 1.0 - pref
         matches[i] += 1
         matches[j] += 1
 
@@ -255,9 +299,11 @@ def ppt_run(codes: list[str], spec: str, cheap_model: str = "gpt-4o-mini") -> tu
     for i, j in pairs:
         match(i, j)
 
-    rates = [(i, wins[i] / max(matches[i], 1)) for i in range(n)]
-    winner = max(rates, key=lambda t: t[1])[0]
-    return winner, rates
+    rates_disc = [(i, wins_disc[i] / max(matches[i], 1)) for i in range(n)]
+    rates_soft = [(i, wins_soft[i] / max(matches[i], 1)) for i in range(n)]
+    winner_disc = max(rates_disc, key=lambda t: t[1])[0]
+    winner_soft = max(rates_soft, key=lambda t: t[1])[0]
+    return winner_disc, winner_soft, rates_disc, rates_soft
 
 
 def is_tie(rates: list[tuple[int, float]], eps: float = TIE_EPSILON) -> bool:
@@ -321,7 +367,8 @@ def refine_with_flagship(spec: str, code: str, failure_tail: str, flagship_model
 
 
 # ----------------------------------------------------------------------- pilot
-def pilot_task(task: dict, out_rows: list, cheap_model: str = "gpt-4o-mini", flagship_model: str = "deepseek-v4-flash") -> None:
+def pilot_task(task: dict, out_rows: list, cheap_model: str = "gpt-4o-mini",
+               flagship_model: str = "deepseek-v4-flash", judge_model: str | None = None) -> None:
     tid = task["id"]
     log(f"\n=== {tid} ({task['kind']}) ===")
 
@@ -347,10 +394,12 @@ def pilot_task(task: dict, out_rows: list, cheap_model: str = "gpt-4o-mini", fla
     first_passing = next((i for i, d in enumerate(draft_results) if d["passed"]), None)
     verify_all_pass = first_passing is not None                 # config V
 
-    # ---- PPT tournament over drafts (cheap judge)
-    winner_idx, rates = ppt_run(drafts, task["spec"], cheap_model=cheap_model)
+    # ---- PPT tournament over drafts (cheap judge, both scoring policies)
+    judge = judge_model or cheap_model
+    winner_idx, winner_soft_idx, rates, rates_soft = ppt_run(drafts, task["spec"], cheap_model=judge)
     tie = is_tie(rates)
     ppt_passes = draft_results[winner_idx]["passed"]
+    ppt_soft_passes = draft_results[winner_soft_idx]["passed"]
 
     # ---- escalation policy: elected winner failed -> flagship refines once
     escalated, refined_pass = False, None
@@ -365,6 +414,9 @@ def pilot_task(task: dict, out_rows: list, cheap_model: str = "gpt-4o-mini", fla
     final_pass = ppt_passes or bool(refined_pass)
     log(f"  PPT->draft[{winner_idx}] {'PASS' if ppt_passes else 'FAIL'} | tie={tie} "
         f"| escalate={escalated} refined={'PASS' if refined_pass else ('FAIL' if refined_pass is False else '-')}")
+    if winner_soft_idx != winner_idx:
+        log(f"  PPT(soft 1-20) -> draft[{winner_soft_idx}] {'PASS' if ppt_soft_passes else 'FAIL'} "
+            f"(diverges from discrete 1-5 pick)")
 
     out_rows.append({
         "task_id": tid, "kind": task["kind"],
@@ -372,7 +424,8 @@ def pilot_task(task: dict, out_rows: list, cheap_model: str = "gpt-4o-mini", fla
         "C_random_expected_pass": random_expected,
         "V_verify_all_pass": verify_all_pass,
         "T_ppt_pick_pass": ppt_passes, "ppt_winner_idx": winner_idx,
-        "tournament_tie": tie, "rates": rates,
+        "T_soft_pick_pass": ppt_soft_passes, "ppt_winner_idx_soft": winner_soft_idx,
+        "tournament_tie": tie, "rates": rates, "rates_soft": rates_soft,
         "n_drafts_passing": n_passing,
         "escalated": escalated,
         "refined_pass": refined_pass,
@@ -390,7 +443,8 @@ def wilson_ci(p: float, n: int, z: float = 1.96) -> tuple[float, float]:
     return (max(0.0, centre - half), min(1.0, centre + half))
 
 
-def summarize(rows: list[dict], cheap_model: str = "gpt-4o-mini", flagship_model: str = "deepseek-v4-flash") -> None:
+def summarize(rows: list[dict], cheap_model: str = "gpt-4o-mini", flagship_model: str = "deepseek-v4-flash",
+              judge_model: str | None = None) -> None:
     n = len(rows)
     if n == 0:
         return
@@ -399,9 +453,10 @@ def summarize(rows: list[dict], cheap_model: str = "gpt-4o-mini", flagship_model
         vals = {
             "B": lambda r: r["B_cheap_pass"], "A": lambda r: r["A_flagship_pass"],
             "V": lambda r: r["V_verify_all_pass"], "T": lambda r: r["T_ppt_pick_pass"],
-            "D": lambda r: r["D_full_pass"],
+            "T*": lambda r: r.get("T_soft_pick_pass"), "D": lambda r: r["D_full_pass"],
         }[name]
-        return sum(1 for r in rows if vals(r)) / n
+        present = [1.0 if vals(r) else 0.0 for r in rows if vals(r) is not None]
+        return sum(present) / len(present) if present else float("nan")
 
     def c_exp() -> float:  # expected pass under random pick (fractional)
         return statistics.fmean(r["C_random_expected_pass"] for r in rows)
@@ -410,10 +465,14 @@ def summarize(rows: list[dict], cheap_model: str = "gpt-4o-mini", flagship_model
     log(f"RESULTS (n={n} tasks)")
     log("=" * 64)
     labels = [("B", f"cheap-only ({cheap_model})"), ("A", f"flagship-only ({flagship_model})"),
-              ("V", "verify-all-first-pass"), ("C*", "best-of-3 RANDOM (expected)"),
-              ("T", "PPT pick, no escalation"), ("D", f"FULL tiered + {flagship_model}")]
+              ("V", "verify-all-first-pass"), ("C*", "best-of-5 RANDOM (expected)"),
+              ("T", f"PPT DISCRETE (judge={judge_model or cheap_model})"),
+              ("T*", "PPT SOFT (1-20)"),
+              ("D", f"FULL tiered + {flagship_model}")]
     for key, name in labels:
         p = c_exp() if key == "C*" else pct(key)
+        if p != p:  # NaN (missing soft column on resumed old files)
+            continue
         lo, hi = wilson_ci(p, n)
         bar = "#" * int(p * 40)
         log(f"  {name:<32} {p*100:5.1f}%  [{lo*100:.1f}-{hi*100:.1f}]  {bar}")
@@ -431,12 +490,22 @@ def summarize(rows: list[dict], cheap_model: str = "gpt-4o-mini", flagship_model
     log(f"\nQ1  PPT vs RANDOM  : {m_q1:+.1%} pts  "
         f"[{boots[49]:+.1%}, {boots[1949]:+.1%}] (95%)")
 
+    # Q3: paired T-soft (fine 1-20, Bradley-Terry) vs T-discrete (coarse 1-5 argmax)
+    # on the SAME calls -- the granularity-scaling comparison of the paper.
+    paired = [(r["T_ppt_pick_pass"], r.get("T_soft_pick_pass")) for r in rows
+              if r.get("T_soft_pick_pass") is not None]
+    if paired:
+        deltas_q3 = [s - b for b, s in paired]
+        m_q3 = statistics.fmean(deltas_q3)
+        diverged = sum(1 for b, s in paired if b != s)
+        log(f"Q3  PPT SOFT vs DISCRETE: {m_q3:+.1%} pts  | picks diverged on {diverged}/{len(paired)} tasks")
+
     # Q2: paired D vs T
     deltas_q2 = [r["D_full_pass"] - r["T_ppt_pick_pass"] for r in rows]
     m_q2 = statistics.fmean(deltas_q2)
     esc = [r for r in rows if r["escalated"]]
     precision = (sum(1 for r in esc if not r["T_ppt_pick_pass"]) / len(esc)) if esc else float("nan")
-    fixes = sum(1 for r in esc if r["refined_pass"]) 
+    fixes = sum(1 for r in esc if r["refined_pass"])
     log(f"Q2  +{flagship_model}      : {m_q2:+.1%} pts  | escalations={len(esc)} "
         f"(precision {precision:.0%}), fixes={fixes}/{len(esc)}")
 
@@ -452,6 +521,10 @@ def main() -> None:
                     help="cheap model for drafting and comparisons (e.g. gpt-3.5-turbo, gpt-4o-mini)")
     ap.add_argument("--flagship-model", default=os.environ.get("DEEPSEEK_MODEL", "deepseek-chat"),
                     help="flagship model for escalation refinement (e.g. deepseek-v4-flash, deepseek-chat)")
+    ap.add_argument("--judge-model", default=None,
+                    help="model used for PPT comparisons (default: cheap model). "
+                         "The paper's verifier is a DIFFERENT, stronger model than the drafter; "
+                         "judging weak drafts with the same weak model measurably hurts selection.")
     ap.add_argument("--limit", type=int, default=56)
     ap.add_argument("--skip-creation", action="store_true")
     ap.add_argument("--smoke", action="store_true", help="3 humaneval tasks only")
@@ -483,18 +556,23 @@ def main() -> None:
             log(f"Resume: {len(done_ids)} tasks already done, {len(todo)} remaining "
                 f"-> writing back to {src.name}")
         tasks = todo
-    log(f"Pilot: {len(tasks)} tasks | cheap: {args.cheap_model} | flagship: {args.flagship_model} | "
-        f"caps: ${BUDGET_CAP_USD}/provider | N={N_DRAFTS} k={K_PIVOTS_REQUESTED}")
+    log(f"Pilot: {len(tasks)} tasks | cheap: {args.cheap_model} | judge: {args.judge_model or args.cheap_model} | "
+        f"flagship: {args.flagship_model} | caps: ${BUDGET_CAP_USD}/provider | N={N_DRAFTS} k={K_PIVOTS_REQUESTED}")
+    if not args.judge_model:
+        log("Note: judge defaults to the cheap tier. Measured: same-tier judge gives PPT 70% vs "
+            "first-pass 90%; a stronger judge (--judge-model) gives PPT 100% on the same drafts.")
     try:
         for t in tasks:
-            pilot_task(t, rows, cheap_model=args.cheap_model, flagship_model=args.flagship_model)
+            pilot_task(t, rows, cheap_model=args.cheap_model,
+                       flagship_model=args.flagship_model, judge_model=args.judge_model)
             with open(out_path, "w", encoding="utf-8") as f:
                 for r in rows:
                     f.write(json.dumps(r) + "\n")
     except (KeyboardInterrupt, SystemExit):
         log("interrupted; partial results retained")
     finally:
-        summarize(rows, cheap_model=args.cheap_model, flagship_model=args.flagship_model)
+        summarize(rows, cheap_model=args.cheap_model, flagship_model=args.flagship_model,
+                  judge_model=args.judge_model)
         log(f"\nPer-task log saved to: {out_path}")
 
 
