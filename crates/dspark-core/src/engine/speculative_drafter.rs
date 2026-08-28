@@ -97,4 +97,61 @@ impl SpeculativeDrafter {
             .filter(|t| t.ast_valid || !t.code_blocks.is_empty())
             .collect()
     }
+
+    /// Sequential Dependency Pass: the agent-level analog of the DSpark sequential
+    /// head (arXiv:2607.05147, Section 3.1). The parallel backbone drafts every
+    /// candidate independently (no intra-block dependencies); this pass injects
+    /// dependency by conditioning each trajectory's remaining blocks on its first
+    /// (topologically first) block as the accepted prefix, mirroring how the
+    /// sequential head conditions position k on the already-sampled prefix.
+    pub async fn sequential_dependency_pass(
+        &self,
+        trajectories: Vec<DraftTrajectory>,
+        prompt: &str,
+    ) -> Vec<DraftTrajectory> {
+        let mut handles = Vec::new();
+
+        for trajectory in trajectories {
+            let client = Arc::clone(&self.client);
+            let sem = Arc::clone(&self.semaphore);
+            let prompt_text = prompt.to_string();
+            handles.push(tokio::spawn(async move {
+                let _permit = sem.acquire().await.ok();
+                let Some(anchor) = trajectory.code_blocks.first().cloned() else {
+                    return Some(trajectory);
+                };
+                let conditioned_prompt = format!(
+                    "{prompt_text}\n\n### Accepted prefix (MUST be preserved):\n```\n{}\n```\n\nComplete the full implementation conditioned on the accepted prefix above.",
+                    anchor.code
+                );
+                let Ok(res) = client.complete(&conditioned_prompt, None, 0.1, false).await else {
+                    return Some(trajectory);
+                };
+                let combined = format!("{}\n\n{}", anchor.code, res);
+                let resolver = create_resolver();
+                let blocks = resolver.split_into_blocks(&combined);
+                let (graph, valid) = resolver.resolve(&blocks, "rust");
+                let ordered = graph.topological_sort();
+                Some(DraftTrajectory {
+                    id: trajectory.id,
+                    full_code: if ordered.is_empty() {
+                        combined
+                    } else {
+                        ordered.iter().map(|b| b.code.as_str()).collect::<Vec<_>>().join("\n\n")
+                    },
+                    code_blocks: ordered,
+                    confidence_score: trajectory.confidence_score,
+                    ast_valid: valid,
+                })
+            }));
+        }
+
+        let mut out = Vec::new();
+        for handle in handles {
+            if let Ok(Some(t)) = handle.await {
+                out.push(t);
+            }
+        }
+        out
+    }
 }

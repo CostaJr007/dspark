@@ -46,10 +46,13 @@ impl PromptOptimizer {
 
 ## Verdict Rules
 Compare candidate implementations strictly against the criteria above.
+Rate each candidate on a 1-20 correctness scale (1 = incorrect, 10 = borderline, 20 = correct).
 Return JSON with the format:
 ```json
 {{
   "winner": "A" | "B" | "EQUAL",
+  "score_A": <integer 1-20>,
+  "score_B": <integer 1-20>,
   "rationale": "Concise reasoning for decision"
 }}
 ```

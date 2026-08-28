@@ -238,3 +238,62 @@ fn step_c() { step_b(); }
     assert_eq!(sorted[1].function_name, "step_b");
     assert_eq!(sorted[2].function_name, "step_c");
 }
+
+#[tokio::test]
+async fn test_sequential_dependency_pass_conditions_on_prefix() {
+    use dspark::client::{ModelClient, ScriptedClient};
+    use dspark::engine::SpeculativeDrafter;
+
+    let continuation = "fn dependent() -> i32 { helper() }\nfn helper() -> i32 { 42 }\n";
+    let client = ModelClient::Scripted(ScriptedClient::new(
+        "drafter-x",
+        move |prompt| {
+            // The conditioned prompt must contain the accepted prefix.
+            assert!(prompt.contains("Accepted prefix"), "prompt: {prompt}");
+            assert!(prompt.contains("fn anchor()"), "prompt: {prompt}");
+            continuation.to_string()
+        },
+    ));
+    let drafter = SpeculativeDrafter::new(client, 2);
+
+    let trajectories = vec![
+        DraftTrajectory {
+            id: 0,
+            full_code: "fn anchor() {}".to_string(),
+            code_blocks: vec![CodeBlock {
+                function_name: "anchor".to_string(),
+                code: "fn anchor() {}".to_string(),
+                line_count: 1,
+            }],
+            confidence_score: 0.8,
+            ast_valid: true,
+        },
+        DraftTrajectory {
+            id: 1,
+            full_code: "fn anchor() {}".to_string(),
+            code_blocks: vec![CodeBlock {
+                function_name: "anchor".to_string(),
+                code: "fn anchor() {}".to_string(),
+                line_count: 1,
+            }],
+            confidence_score: 0.8,
+            ast_valid: true,
+        },
+    ];
+
+    let refined = drafter
+        .sequential_dependency_pass(trajectories, "Implement the feature")
+        .await;
+
+    assert_eq!(refined.len(), 2);
+    for t in &refined {
+        assert!(
+            t.full_code.contains("fn anchor()"),
+            "anchor prefix must be preserved: {}",
+            t.full_code
+        );
+        assert!(t.full_code.contains("fn dependent()"));
+        assert!(t.ast_valid);
+        assert!(!t.code_blocks.is_empty());
+    }
+}

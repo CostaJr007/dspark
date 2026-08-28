@@ -1,5 +1,16 @@
 //! Probabilistic Pivot Tournament (PPT) module.
-//! Implements O(Nk) tournament algorithm from LLM-as-a-Verifier (Kwok et al., 2026).
+//! Implements the O(Nk) tournament algorithm from LLM-as-a-Verifier (Kwok et al., 2026),
+//! including the Bradley-Terry soft updates derived from the verifier's continuous scores.
+//!
+//! Fidelity notes vs. the paper (arXiv:2607.05391, Algorithm 1):
+//! - ring pass: every candidate appears exactly once in the "A" slot and once in the "B"
+//!   slot (identity Hamiltonian cycle), cancelling the verifier's positional bias;
+//! - soft updates: `w_i += p`, `w_j += 1 - p` with p = sigmoid(R_i - R_j) whenever the
+//!   response carries 1-20 scores; binary winner parsing remains as fallback;
+//! - pivot selection: top-k by ring-pass mean preference w_i/c_i;
+//! - deviation (documented): ring pairs are NOT excluded from pivot rounds, so the
+//!   comparison count stays exactly N + k(N-k) + C(k,2) (the paper's stated total),
+//!   keeping the count deterministic and reproducible over the wire.
 
 use crate::client::{ClientError, ModelClient};
 use crate::utils::prompt_optimizer::PromptOptimizer;
@@ -12,7 +23,7 @@ use tokio::sync::Semaphore;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TournamentResult {
     pub best_trajectory_idx: usize,
-    pub rankings: Vec<(usize, f64)>, // (trajectory_idx, win_mass)
+    pub rankings: Vec<(usize, f64)>, // (trajectory_idx, mean preference w_i/c_i)
     pub total_comparisons: usize,
 }
 
@@ -35,6 +46,49 @@ impl TournamentResult {
 pub fn tournament_comparison_count(n: usize, k_requested: usize) -> usize {
     let k = k_requested.clamp(1, (n / 2).max(1));
     n + n.saturating_sub(k) * k + k * (k.saturating_sub(1)) / 2
+}
+
+/// Bradley-Terry preference of A over B: p = sigmoid(R_a - R_b).
+fn sigmoid(x: f64) -> f64 {
+    1.0 / (1.0 + (-x).exp())
+}
+
+/// Parse a 1-20 score field (`"score_A": 15`) from a comparison response.
+fn parse_score(res: &str, key: &str) -> Option<f64> {
+    let marker = format!("\"{}\"", key);
+    let idx = res.find(&marker)?;
+    let tail = &res[idx + marker.len()..];
+    let digits: String = tail
+        .chars()
+        .skip_while(|c| !c.is_ascii_digit())
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+    let v: f64 = digits.parse().ok()?;
+    (1.0..=20.0).contains(&v).then_some(v / 20.0)
+}
+
+/// Preference of candidate A (over B) for a single comparison response.
+///
+/// Prefers continuous scores (Bradley-Terry of normalized 1-20 rewards, per
+/// Eq. 3.2 of the paper); falls back to the binary winner parse when scores
+/// are absent (e.g. restricted APIs). EQUAL maps to 0.5.
+/// Public for benchmarking harnesses (A/B selection-accuracy experiments).
+pub fn comparison_preference(res: &str) -> f64 {
+    if let (Some(ra), Some(rb)) = (parse_score(res, "score_A"), parse_score(res, "score_B")) {
+        return sigmoid(ra - rb);
+    }
+    if res.contains("EQUAL") {
+        return 0.5;
+    }
+    let a_won = !res.contains("\"winner\": \"B\"")
+        && (res.contains("\"winner\": \"A\"") || res.contains("A is better"));
+    if a_won {
+        1.0
+    } else if res.contains("\"winner\": \"B\"") || res.contains("B is better") {
+        0.0
+    } else {
+        0.5
+    }
 }
 
 pub struct PivotTournament {
@@ -84,15 +138,36 @@ impl PivotTournament {
         let k = self.n_pivots.clamp(1, (n / 2).max(1));
 
         // STAGE 1: Ring Pass (Hamiltonian cycle adjacent comparisons)
-        let (ring_results, ring_comps) = self.ring_pass(trajectories, criteria).await;
+        // Soft updates accumulate into ring-scoped accumulators for pivot selection.
+        let (ring_mass, ring_count, ring_comps) = self.ring_pass(trajectories, criteria).await;
 
-        // STAGE 2: Pivot Selection (top-k from ring pass)
-        let pivots = self.select_pivots(&ring_results, k, n);
+        // STAGE 2: Pivot Selection (top-k by ring-pass mean preference w_i/c_i)
+        let pivots = self.select_pivots(&ring_mass, &ring_count, k, n);
 
-        // STAGE 3: Pivot Tournament (O(Nk) comparisons)
-        let (rankings, tourney_comps) = self.pivot_tournament(trajectories, &pivots, criteria).await;
+        // STAGE 3: Pivot Tournament (O(Nk) comparisons), aggregated with ring totals
+        let (win_mass, matches_count, tourney_comps) = self
+            .pivot_tournament(trajectories, &pivots, criteria)
+            .await;
 
-        // STAGE 4: Winner selection
+        // Aggregate ring + pivot accumulators (soft preferences are additive)
+        let mut final_mass = ring_mass;
+        let mut final_count = ring_count;
+        for (idx, mass) in win_mass {
+            *final_mass.entry(idx).or_default() += mass;
+        }
+        for (idx, count) in matches_count {
+            *final_count.entry(idx).or_default() += count;
+        }
+
+        let rankings: Vec<(usize, f64)> = (0..n)
+            .map(|idx| {
+                let mass = *final_mass.get(&idx).unwrap_or(&0.0);
+                let count = final_count.get(&idx).copied().unwrap_or(1).max(1);
+                (idx, mass / count as f64)
+            })
+            .collect();
+
+        // STAGE 4: Winner selection (highest count-normalized preference)
         let best_idx = rankings
             .iter()
             .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
@@ -106,12 +181,12 @@ impl PivotTournament {
         }
     }
 
-    /// Stage 1: Ring Pass compares (0 vs 1, 1 vs 2, ..., n-1 vs 0)
+    /// Stage 1: Ring Pass compares (0 vs 1, 1 vs 2, ..., n-1 vs 0) with soft updates.
     async fn ring_pass(
         &self,
         trajectories: &[DraftTrajectory],
         criteria: &str,
-    ) -> (Vec<(usize, usize, bool)>, usize) {
+    ) -> (HashMap<usize, f64>, HashMap<usize, usize>, usize) {
         let n = trajectories.len();
         let mut handles = Vec::new();
 
@@ -128,39 +203,41 @@ impl PivotTournament {
             handles.push(tokio::spawn(async move {
                 let _permit = sem.acquire().await.ok();
                 let res = client.complete(&prompt, None, 0.0, false).await.unwrap_or_default();
-                let a_won = !res.contains("\"winner\": \"B\"") && (res.contains("\"winner\": \"A\"") || res.contains("A is better"));
-                (i, j, a_won)
+                (i, j, comparison_preference(&res))
             }));
         }
 
-        let mut results = Vec::new();
+        let mut mass: HashMap<usize, f64> = HashMap::new();
+        let mut count: HashMap<usize, usize> = HashMap::new();
+        let mut comps = 0;
         for handle in handles {
-            if let Ok(res) = handle.await {
-                results.push(res);
+            if let Ok((i, j, p)) = handle.await {
+                comps += 1;
+                *mass.entry(i).or_default() += p;
+                *mass.entry(j).or_default() += 1.0 - p;
+                *count.entry(i).or_default() += 1;
+                *count.entry(j).or_default() += 1;
             }
         }
-
-        let count = results.len();
-        (results, count)
+        (mass, count, comps)
     }
 
-    /// Stage 2: Select top-k pivots based on ring pass win mass
-    fn select_pivots(&self, ring_results: &[(usize, usize, bool)], k: usize, total_n: usize) -> Vec<usize> {
-        let mut wins: HashMap<usize, usize> = HashMap::new();
-
-        for &(i, j, a_won) in ring_results {
-            if a_won {
-                *wins.entry(i).or_default() += 1;
-            } else {
-                *wins.entry(j).or_default() += 1;
-            }
-        }
-
-        let mut ranked: Vec<(usize, usize)> = (0..total_n)
-            .map(|idx| (idx, *wins.get(&idx).unwrap_or(&0)))
+    /// Stage 2: Select top-k pivots by ring-pass mean preference w_i/c_i.
+    fn select_pivots(
+        &self,
+        ring_mass: &HashMap<usize, f64>,
+        ring_count: &HashMap<usize, usize>,
+        k: usize,
+        total_n: usize,
+    ) -> Vec<usize> {
+        let mut ranked: Vec<(usize, f64)> = (0..total_n)
+            .map(|idx| {
+                let mass = *ring_mass.get(&idx).unwrap_or(&0.0);
+                let count = ring_count.get(&idx).copied().unwrap_or(1).max(1);
+                (idx, mass / count as f64)
+            })
             .collect();
-        ranked.sort_by_key(|a| std::cmp::Reverse(a.1));
-
+        ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         ranked.into_iter().take(k).map(|(idx, _)| idx).collect()
     }
 
@@ -170,7 +247,7 @@ impl PivotTournament {
         trajectories: &[DraftTrajectory],
         pivots: &[usize],
         criteria: &str,
-    ) -> (Vec<(usize, f64)>, usize) {
+    ) -> (HashMap<usize, f64>, HashMap<usize, usize>, usize) {
         let pivot_set: HashSet<usize> = pivots.iter().copied().collect();
         let mut handles = Vec::new();
 
@@ -191,8 +268,7 @@ impl PivotTournament {
                 handles.push(tokio::spawn(async move {
                     let _permit = sem.acquire().await.ok();
                     let res = client.complete(&prompt, None, 0.0, false).await.unwrap_or_default();
-                    let a_won = !res.contains("\"winner\": \"B\"") && (res.contains("\"winner\": \"A\"") || res.contains("A is better"));
-                    (i, p, a_won)
+                    (i, p, comparison_preference(&res))
                 }));
             }
         }
@@ -211,8 +287,7 @@ impl PivotTournament {
                 handles.push(tokio::spawn(async move {
                     let _permit = sem.acquire().await.ok();
                     let res = client.complete(&prompt, None, 0.0, false).await.unwrap_or_default();
-                    let a_won = !res.contains("\"winner\": \"B\"") && (res.contains("\"winner\": \"A\"") || res.contains("A is better"));
-                    (p1, p2, a_won)
+                    (p1, p2, comparison_preference(&res))
                 }));
             }
         }
@@ -222,27 +297,16 @@ impl PivotTournament {
         let mut total_comps = 0;
 
         for handle in handles {
-            if let Ok((i, j, a_won)) = handle.await {
+            if let Ok((i, j, p)) = handle.await {
                 total_comps += 1;
-                if a_won {
-                    *win_mass.entry(i).or_default() += 1.0;
-                } else {
-                    *win_mass.entry(j).or_default() += 1.0;
-                }
+                *win_mass.entry(i).or_default() += p;
+                *win_mass.entry(j).or_default() += 1.0 - p;
                 *matches_count.entry(i).or_default() += 1;
                 *matches_count.entry(j).or_default() += 1;
             }
         }
 
-        let rankings: Vec<(usize, f64)> = (0..trajectories.len())
-            .map(|idx| {
-                let wins = *win_mass.get(&idx).unwrap_or(&0.0);
-                let total = *matches_count.get(&idx).unwrap_or(&1).max(&1);
-                (idx, wins / total as f64)
-            })
-            .collect();
-
-        (rankings, total_comps)
+        (win_mass, matches_count, total_comps)
     }
 }
 
@@ -274,5 +338,64 @@ mod tests {
         assert_eq!(tournament_comparison_count(10, 3), 34);
         assert_eq!(tournament_comparison_count(20, 3), 74);
         assert_eq!(tournament_comparison_count(3, 3), 5); // k clamped to 1
+    }
+
+    #[test]
+    fn soft_preference_parses_scores_bradley_terry() {
+        let res = r#"{"winner": "A", "score_A": 15, "score_B": 5}"#;
+        let p = comparison_preference(res);
+        assert!(p > 0.6, "score 15 vs 5 must strongly prefer A, got {p}");
+        assert!(p < 1.0, "soft preference is never hard 1.0");
+
+        // Symmetric inverse
+        let res2 = r#"{"winner": "B", "score_A": 5, "score_B": 15}"#;
+        let p2 = comparison_preference(res2);
+        assert!((p + p2 - 1.0).abs() < 1e-9, "preferences must be complementary");
+
+        // Equal scores -> 0.5
+        let res3 = r#"{"winner": "EQUAL", "score_A": 10, "score_B": 10}"#;
+        assert!((comparison_preference(res3) - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn binary_fallback_without_scores() {
+        assert_eq!(comparison_preference("{\"winner\": \"A\"}"), 1.0);
+        assert_eq!(comparison_preference("{\"winner\": \"B\"}"), 0.0);
+        assert_eq!(comparison_preference("{\"winner\": \"EQUAL\"}"), 0.5);
+        assert_eq!(comparison_preference(""), 0.5);
+    }
+
+    #[tokio::test]
+    async fn soft_updates_yield_fractional_rankings() {
+        use crate::client::ScriptedClient;
+
+        let client = ModelClient::Scripted(ScriptedClient::new("judge-x", |_| {
+            "{\"winner\": \"B\", \"score_A\": 5, \"score_B\": 18}".to_string()
+        }));
+        let tournament = PivotTournament::new(client, 2);
+        let trajectories: Vec<DraftTrajectory> = (0..5)
+            .map(|i| DraftTrajectory {
+                id: i,
+                full_code: format!("fn c{}() {{ {} }}", i, i),
+                code_blocks: vec![crate::utils::ast_resolver::CodeBlock {
+                    function_name: format!("c{}", i),
+                    code: format!("fn c{}() {{ {} }}", i, i),
+                    line_count: 1,
+                }],
+                confidence_score: 0.8,
+                ast_valid: true,
+            })
+            .collect();
+
+        let res = tournament.run_tournament(&trajectories, "Check correctness").await;
+
+        assert_eq!(res.total_comparisons, tournament_comparison_count(5, 2));
+        assert_eq!(res.rankings.len(), 5);
+        for (_, rate) in &res.rankings {
+            assert!(
+                *rate > 0.0 && *rate < 1.0,
+                "soft updates must yield fractional preferences, got {rate}"
+            );
+        }
     }
 }

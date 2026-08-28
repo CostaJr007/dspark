@@ -110,6 +110,10 @@ enum Commands {
         /// Flagship curator is reserved for the escalation/refinement stage.
         #[arg(long)]
         ranking_model: Option<String>,
+        /// Inject sequential dependency into the drafts (DSpark sequential-head
+        /// analog: re-draft each trajectory conditioned on its accepted prefix).
+        #[arg(long, default_value_t = true)]
+        sequential: bool,
     },
     /// Scan, list and test local offline LLMs (Ollama, LM Studio, vLLM)
     Local {
@@ -326,6 +330,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             trajectories,
             pivots,
             ranking_model,
+            sequential,
         }) => {
             let pair = DsparkPair::load();
             let generator = generator.unwrap_or_else(|| pair.creator.clone());
@@ -345,13 +350,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // Tiered model routing: cheap tier drafts AND ranks; flagship only refines.
                 let ranking_spec = ranking_model.unwrap_or_else(|| generator.clone());
                 println!("  Ranking comparisons via: {} | Flagship refinement via: {}", ranking_spec, curator);
+                if ranking_spec == generator {
+                    println!(
+                        "  {}",
+                        "Warning: ranking tier == draft tier. Measured selection quality drops when the\n  judge is not STRICTLY stronger than the drafter (same-tier judge: 70% vs first-pass\n  90%; stronger judge: 100%). Consider --ranking-model <flagship>."
+                            .yellow()
+                    );
+                }
 
                 // Stage 1: Parallel Speculative Drafting
                 println!("\n{}", format!("[1/5] Generating {} speculative trajectories in parallel...", trajectories).yellow());
                 let drafter = dspark::engine::SpeculativeDrafter::with_model(&generator, trajectories)?;
                 let raw_trajectories = drafter.generate_trajectories(&prompt).await;
-                let valid_trajectories = drafter.apply_sequential_module(raw_trajectories);
+                let mut valid_trajectories = drafter.apply_sequential_module(raw_trajectories);
                 println!("  ✓ Obtained {} structurally valid AST trajectories", valid_trajectories.len());
+
+                // Sequential Dependency Pass (DSpark sequential-head analog): condition
+                // each draft on its accepted prefix, mitigating multi-modal collisions.
+                if sequential && !valid_trajectories.is_empty() {
+                    println!("  Injecting sequential dependency (prefix-conditioned re-draft)...");
+                    valid_trajectories = drafter.sequential_dependency_pass(valid_trajectories, &prompt).await;
+                    println!("  ✓ {} prefix-conditioned trajectories", valid_trajectories.len());
+                }
 
                 if valid_trajectories.is_empty() {
                     eprintln!("Error: No valid candidate trajectories generated.");
