@@ -457,6 +457,13 @@ def create_model_client(model_or_provider: str):
     spec = model_or_provider.strip()
     spec_lower = spec.lower()
 
+    # Accept the provider/model notation used by LiteLLM-style configuration.
+    if "/" in spec:
+        provider, model_name = spec.split("/", 1)
+        if provider.lower() in {"deepseek", "openai", "gemini"}:
+            spec = f"{provider}:{model_name}"
+            spec_lower = spec.lower()
+
     if spec_lower.startswith("local:") or spec_lower.startswith("ollama:") or spec_lower.startswith("lmstudio:"):
         model_name = spec.split(":", 1)[1]
         base_url = "http://localhost:1234/v1" if spec_lower.startswith("lmstudio:") else "http://localhost:11434/v1"
