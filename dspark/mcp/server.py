@@ -10,7 +10,13 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 
-from mcp.server.fastmcp import FastMCP
+try:
+    from mcp.server.fastmcp import FastMCP
+except ImportError:
+    try:
+        from mcp.server.mcpserver import MCPServer as FastMCP  # mcp 2.x compat
+    except ImportError:
+        FastMCP = None  # type: ignore[assignment]
 
 from ..compiler.parser import infer_contracts_from_ast
 from ..engines.curator import CuratorEngine
