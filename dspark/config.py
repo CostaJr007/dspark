@@ -48,6 +48,31 @@ class DualEngineConfig(BaseSettings):
         description="Isolated folder for test code execution",
     )
 
+    # AgentDeltaMemory (KDA-derived agent memory)
+    memory_enabled: bool = Field(
+        default=True,
+        description="Enable AgentDeltaMemory (delta rule, per-channel decay, convergence stop) in the CEGAR loop",
+    )
+    memory_dim: int = Field(default=64, ge=16, le=512, description="Embedding dimension of the memory state")
+    memory_eps: float = Field(default=1e-3, gt=0.0, description="Delta norm below which the memory is converged")
+
+    # Verification scaling (LLM-as-a-Verifier, arXiv:2607.05391)
+    curator_repetitions: int = Field(
+        default=1,
+        ge=1,
+        le=8,
+        description="Repeated evaluation K: number of independent curator/sandbox audits averaged per CEGAR iteration (variance reduction)",
+    )
+    voc_stagnation_min_points: int = Field(
+        default=3,
+        ge=2,
+        description="Minimum history points before the VOC (Value-Order Correlation) stagnation stop can fire",
+    )
+    voc_stagnation_threshold: float = Field(
+        default=0.1,
+        description="Spearman rank correlation between iteration and score below which the loop is declared stagnant",
+    )
+
     # API Keys (read from environment or .env)
     gemini_api_key: Optional[str] = Field(default=None, alias="GEMINI_API_KEY")
     deepseek_api_key: Optional[str] = Field(default=None, alias="DEEPSEEK_API_KEY")

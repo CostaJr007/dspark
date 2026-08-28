@@ -8,6 +8,7 @@ from dspark.pipeline.cegar import CEGARPipeline
 from dspark.engines.creator import CreatorEngine
 from dspark.engines.curator import CuratorEngine
 from dspark.engines.refiner import RefinerEngine
+from dspark.memory import AgentDeltaMemory
 from dspark.state import IOContract, VerdictEnum
 
 
@@ -80,6 +81,7 @@ class TestCegarMock(unittest.TestCase):
                 curator=MockCurator(),
                 refiner=MockRefiner(),
                 max_iterations=3,
+                memory=AgentDeltaMemory(),
             )
 
             final_state = await pipeline.execute(
@@ -90,6 +92,10 @@ class TestCegarMock(unittest.TestCase):
             self.assertEqual(final_state.verdict, VerdictEnum.APPROVED)
             self.assertIn("return -x if x < 0 else x", final_state.current_draft or "")
             self.assertGreaterEqual(len(final_state.history), 2)
+
+            # AgentDeltaMemory must have recorded invariant + decision writes
+            self.assertIn("channels", final_state.memory_stats)
+            self.assertGreaterEqual(final_state.memory_stats["writes"], 1)
 
         asyncio.run(_runner())
 

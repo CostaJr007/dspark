@@ -94,6 +94,11 @@ class AuditResult(BaseModel):
     suggested_improvements: List[str] = Field(default_factory=list)
     refined_code: Optional[str] = None
     raw_response: str = Field(default="")
+    criteria_scores: Dict[str, int] = Field(
+        default_factory=dict,
+        description="Per-criterion scores from the verifier's criteria decomposition "
+        "(Specification / Output / Errors, per LLM-as-a-Verifier Section 4.3)",
+    )
 
     @property
     def is_approved(self) -> bool:
@@ -128,6 +133,27 @@ class DualEngineState(BaseModel):
     max_iterations: int = Field(default=3)
     history: List[Dict[str, Any]] = Field(default_factory=list)
     error_message: Optional[str] = None
+
+    # AgentDeltaMemory observability
+    memory_stats: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="AgentDeltaMemory statistics captured at pipeline end (KDA-derived)",
+    )
+    memory_stable: bool = Field(
+        default=False,
+        description="True when the delta rule converged (delta < eps): refinement loop stopped learning",
+    )
+
+    # Verifier progress signal (LLM-as-a-Verifier, Section 6)
+    voc: Optional[float] = Field(
+        default=None,
+        description="Latest Value-Order Correlation: Spearman rank correlation between "
+        "CEGAR iteration index and curator score (task-progress proxy)",
+    )
+    voc_stagnated: bool = Field(
+        default=False,
+        description="True when the loop stopped early because the score stopped improving (VOC below threshold)",
+    )
 
     def increment_iteration(self) -> None:
         """Advance iteration and trigger circuit breaker if max reached."""

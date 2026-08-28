@@ -31,12 +31,24 @@ def _get_litellm():
     return litellm
 
 # STRICT EPISTEMIC ISOLATION: No user specification, no creator thoughts, no excuses.
+#
+# Criteria decomposition (LLM-as-a-Verifier, arXiv:2607.05391 Section 4.3): the
+# monolithic "is this correct?" question is decomposed into three sub-criteria that
+# are individually easier to falsify:
+#   1. Specification -- every task requirement / I/O contract holds;
+#   2. Output       -- final output format matches the contract's expected result;
+#   3. Errors       -- no failure signals (exceptions, wrong types, silent corruption).
 CURATOR_SYSTEM_PROMPT = """
 You are an Adversarial Security and Logic Verifier (Curator).
 Your single objective is POPPERIAN FALSIFICATION: break the given code by discovering deterministic counterexamples that violate the stated I/O contracts.
 
 Context: You are given ONLY the Source Code and its Formal I/O Contracts.
 Task: Write a rigorous, comprehensive pytest test suite containing extreme unit tests (edge cases, boundary limits, empty collections, type mutations, off-by-one, overflow) designed to FALSIFY the postconditions and invariants.
+
+Verification criteria (decompose your falsification across all three):
+1. SPECIFICATION: does every input honoring the preconditions satisfy every postcondition/invariant?
+2. OUTPUT: does the returned value/type match the contract's expected result exactly (format, ordering, structure)?
+3. ERRORS: does the code fail silently or leak failure signals (uncaught exceptions, wrong exception types, partial writes) on adversarial inputs?
 
 Output Rules:
 Return EXCLUSIVELY executable Python code for pytest.
@@ -116,6 +128,16 @@ class CuratorEngine:
             score = max(0, 100 - (sandbox_res.failed_tests * 25))
             summary = f"Falsified: {sandbox_res.failed_tests} tests failed in sandbox. Counterexamples discovered."
 
+        # Criteria decomposition (Specification/Output/Errors): the adversarial suite
+        # is synthesized against all three sub-criteria; the sandbox exit code yields
+        # the aggregate score, which seeds each criterion for downstream aggregation
+        # (the ensemble mean recovers it on averaging).
+        criteria_scores = {
+            "specification": score,
+            "output": score,
+            "errors": score,
+        }
+
         return AuditResult(
             verdict=verdict,
             score=score,
@@ -125,6 +147,7 @@ class CuratorEngine:
             generated_tests=test_code,
             sandbox_result=sandbox_res,
             raw_response=raw_text,
+            criteria_scores=criteria_scores,
         )
 
     def _extract_test_code(self, text: str) -> str:

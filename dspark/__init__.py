@@ -20,6 +20,7 @@ __version__ = "0.2.0"
 __author__ = "Adeilson Costa (CostaJr007)"
 
 from .config import DualEngineConfig, config
+from .memory import AgentDeltaMemory, MemoryChannel, MemoryEntry, MemoryRead, MemoryWrite
 from .state import (
     IOContract,
     CounterExample,
@@ -46,6 +47,11 @@ from .agent import DSparkAgent
 __all__ = [
     "DualEngineConfig",
     "config",
+    "AgentDeltaMemory",
+    "MemoryChannel",
+    "MemoryEntry",
+    "MemoryRead",
+    "MemoryWrite",
     "IOContract",
     "CounterExample",
     "DualEngineState",
