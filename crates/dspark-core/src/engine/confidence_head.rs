@@ -40,6 +40,18 @@ impl Default for ConfidenceHead {
 }
 
 impl ConfidenceHead {
+    /// Maps a (possibly STS-calibrated) confidence score to its risk level,
+    /// mirroring the thresholds used by `estimate_confidence`.
+    pub fn risk_for_confidence(confidence: f64) -> RiskLevel {
+        if confidence > 0.88 {
+            RiskLevel::Low
+        } else if confidence > 0.65 {
+            RiskLevel::Medium
+        } else {
+            RiskLevel::High
+        }
+    }
+
     /// Estimates confidence scores across all blocks of a trajectory
     pub fn estimate_confidence(&self, trajectory: &DraftTrajectory) -> Vec<BlockConfidence> {
         trajectory
@@ -58,13 +70,7 @@ impl ConfidenceHead {
 
                 confidence = confidence.clamp(0.0, 1.0);
 
-                let risk_level = if confidence > 0.88 {
-                    RiskLevel::Low
-                } else if confidence > 0.65 {
-                    RiskLevel::Medium
-                } else {
-                    RiskLevel::High
-                };
+                let risk_level = Self::risk_for_confidence(confidence);
 
                 let needs_verification = confidence < self.verification_threshold;
 

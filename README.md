@@ -213,6 +213,11 @@ dspark run "Implement a thread-safe LRU Cache with TTL expiration in Python" \
 # Optional: separate ranking tier (a judge strictly stronger than the drafter
 #           measurably improves tournament selection)
 dspark run "..." --speculative --trajectories 4 --pivots 2 --ranking-model deepseek-chat
+
+# Optional: STS-calibrated confidence for the escalation policy + greedy early-stop scheduler.
+#   --calibration <file.json>  JSON array of per-position temperatures (identity when absent)
+#   --prune-margin <0..1>      min marginal rejection risk to admit a block (0.31 default)
+dspark run "..." --speculative --calibration calibration.json --prune-margin 0.31
 ```
 
 ### 2. Audit Code Against Formal Contracts

@@ -31,7 +31,7 @@ pub use curator::DeepSeekCurator;
 pub use engine::{
     BlockConfidence, ConfidenceHead, CostScheduler, DraftTrajectory, EscalationContext,
     EscalationDecision, EscalationPolicy, EscalationReason, LogprobExtractor, PivotTournament,
-    RiskLevel, SpeculativeDrafter, TokenLogprob, TournamentResult, VerificationPlan,
+    RiskLevel, SpeculativeDrafter, StsCalibrator, TokenLogprob, TournamentResult, VerificationPlan,
     VerificationResult, VerificationVerdict,
 };
 pub use generator::GeminiGenerator;

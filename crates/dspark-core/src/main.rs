@@ -4,6 +4,7 @@ use clap::{Parser, Subcommand};
 use colored::*;
 use dspark::client::{DeepSeekClient, LocalLLMClient, ModelClient};
 use dspark::curator::DeepSeekCurator;
+use dspark::engine::{BlockConfidence, ConfidenceHead, StsCalibrator};
 use dspark::mcp::run_mcp_server;
 use dspark::pipeline::DSparkPipeline;
 use dspark::repl::start_repl;
@@ -13,6 +14,60 @@ use dspark::util::read_file_or_string;
 use dspark::DSparkAgent;
 use std::fs;
 use std::path::Path;
+
+/// Loads an STS calibration file (JSON array of per-position temperatures) if given.
+fn load_sts_calibration(path: Option<&str>) -> Option<StsCalibrator> {
+    let path = path?;
+    let content = match fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("STS: could not read {path}: {e}");
+            return None;
+        }
+    };
+    match serde_json::from_str::<Vec<f64>>(&content) {
+        Ok(temps) => {
+            let sts = StsCalibrator::new(temps);
+            println!(
+                "{}",
+                format!(
+                    "STS calibration loaded: {} per-position temperatures (DSpark confidence scheduling)",
+                    sts.temperatures.len()
+                )
+                .cyan()
+            );
+            Some(sts)
+        }
+        Err(e) => {
+            eprintln!("STS: ignoring {path} ({}): {}", e, content.trim());
+            None
+        }
+    }
+}
+
+/// Applies STS calibration (or identity) to a block-confidence vector, keeping the
+/// risk level consistent with the calibrated score.
+fn calibrate_block_confidences(
+    sts: Option<&StsCalibrator>,
+    confs: &[BlockConfidence],
+) -> Vec<BlockConfidence> {
+    let Some(sts) = sts else {
+        return confs.to_vec();
+    };
+    let scores: Vec<f64> = confs.iter().map(|b| b.confidence_score).collect();
+    let calibrated = sts.calibrate(&scores);
+    confs
+        .iter()
+        .zip(calibrated)
+        .map(|(b, c)| BlockConfidence {
+            block_id: b.block_id,
+            function_name: b.function_name.clone(),
+            confidence_score: c,
+            needs_verification: b.needs_verification,
+            risk_level: ConfidenceHead::risk_for_confidence(c),
+        })
+        .collect()
+}
 
 #[derive(Parser)]
 #[command(name = "dspark")]
@@ -114,6 +169,16 @@ enum Commands {
         /// analog: re-draft each trajectory conditioned on its accepted prefix).
         #[arg(long, default_value_t = true)]
         sequential: bool,
+        /// Path to an STS calibration file (JSON array of per-position temperatures,
+        /// DSpark arXiv:2607.05147 Sec. 3.2.1). When absent, calibration is identity.
+        #[arg(long)]
+        calibration: Option<String>,
+        /// Minimum marginal expected gain (rejection risk) to admit a block for
+        /// remote verification. 0.0 verifies everything up to the call cap;
+        /// ~0.31 (default) prunes near-waste verifications (measured: −22% calls,
+        /// more failures caught per call). Set 0.0 to disable the early stop.
+        #[arg(long, default_value_t = 0.31)]
+        prune_margin: f64,
     },
     /// Scan, list and test local offline LLMs (Ollama, LM Studio, vLLM)
     Local {
@@ -331,6 +396,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             pivots,
             ranking_model,
             sequential,
+            calibration,
+            prune_margin,
         }) => {
             let pair = DsparkPair::load();
             let generator = generator.unwrap_or_else(|| pair.creator.clone());
@@ -380,18 +447,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 // Stage 2: Confidence Head & Local Complexity
                 println!("\n{}", "[2/5] Estimating local entropy & confidence scores...".yellow());
+                let sts = load_sts_calibration(calibration.as_deref());
                 let conf_head = dspark::engine::ConfidenceHead::default();
                 let mut all_block_confs = Vec::new();
                 for (i, traj) in valid_trajectories.iter().enumerate() {
-                    let confs = conf_head.estimate_confidence(traj);
+                    let raw = conf_head.estimate_confidence(traj);
+                    let confs = calibrate_block_confidences(sts.as_ref(), &raw);
                     let needs_verif = confs.iter().filter(|b| b.needs_verification).count();
                     println!("  Trajectory #{}: {}/{} blocks require verification", i + 1, needs_verif, confs.len());
                     all_block_confs.extend(confs);
                 }
 
-                // Stage 3: Cost-Aware Verification Scheduler
+                // Stage 3: Cost-Aware Verification Scheduler (greedy early-stop)
                 println!("\n{}", "[3/5] Running Cost-Aware Scheduler & pruning...".yellow());
-                let scheduler = dspark::engine::CostScheduler::default();
+                let scheduler = dspark::engine::CostScheduler::with_early_stop(
+                    20,
+                    0.002,
+                    prune_margin,
+                );
                 let plan = scheduler.schedule_verification(&all_block_confs);
                 println!(
                     "  ✓ Scheduled {} verifications (Pruned {} blocks, Est. API cost: ${:.4}, Acceptance: {:.1}%)",
@@ -416,14 +489,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // Stage 5: Flagship escalation policy (CEGAR refinement on residual hard cases)
                 println!("\n{}", "[5/5] Evaluating flagship escalation policy...".yellow());
                 let conf_head2 = dspark::engine::ConfidenceHead::default();
-                let winner_confs = conf_head2.estimate_confidence(winner);
+                let winner_confs_raw = conf_head2.estimate_confidence(winner);
+                let winner_confs = calibrate_block_confidences(sts.as_ref(), &winner_confs_raw);
                 let avg_confidence = if winner_confs.is_empty() {
                     1.0
                 } else {
                     winner_confs.iter().map(|b| b.confidence_score).sum::<f64>()
                         / winner_confs.len() as f64
                 };
-                let winner_plan = dspark::engine::CostScheduler::default()
+                let winner_plan = dspark::engine::CostScheduler::with_early_stop(20, 0.002, prune_margin)
                     .schedule_verification(&winner_confs);
                 let high_risk_blocks = winner_confs
                     .iter()
@@ -643,4 +717,64 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn block(conf: f64) -> BlockConfidence {
+        BlockConfidence {
+            block_id: 0,
+            function_name: "fn_test".to_string(),
+            confidence_score: conf,
+            needs_verification: true,
+            risk_level: ConfidenceHead::risk_for_confidence(conf),
+        }
+    }
+
+    #[test]
+    fn no_calibration_is_identity() {
+        let confs = vec![block(0.9), block(0.6), block(0.8)];
+        let out = calibrate_block_confidences(None, &confs);
+        for (a, b) in out.iter().zip(confs.iter()) {
+            assert_eq!(a.confidence_score, b.confidence_score);
+            assert_eq!(a.risk_level, b.risk_level);
+        }
+    }
+
+    #[test]
+    fn sts_calibration_updates_scores_and_risk() {
+        // T=2.0 flattens the cumulative survival product (position-dependent):
+        // c'_1 ~ 0.75 (Medium), c'_2 ~ 0.63 (drops below the 0.65 floor -> High).
+        let sts = StsCalibrator::new(vec![2.0, 2.0, 2.0]);
+        let confs = vec![block(0.9), block(0.6), block(0.8)];
+        let out = calibrate_block_confidences(Some(&sts), &confs);
+        assert!(out[0].confidence_score < 0.9);
+        assert!(out[0].confidence_score > 0.65);
+        assert_eq!(out[0].risk_level, dspark::engine::RiskLevel::Medium);
+        assert!(out[1].confidence_score < 0.65);
+        assert_eq!(out[1].risk_level, dspark::engine::RiskLevel::High);
+    }
+
+    #[test]
+    fn malformed_calibration_file_yields_identity() {
+        let dir = std::env::temp_dir().join("dspark_sts_test");
+        let _ = std::fs::create_dir_all(&dir);
+        let bad = dir.join("bad.json");
+        std::fs::write(&bad, "not json").unwrap();
+        assert!(load_sts_calibration(Some(bad.to_str().unwrap())).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn valid_calibration_file_loads_temperatures() {
+        let dir = std::env::temp_dir().join("dspark_sts_test2");
+        let _ = std::fs::create_dir_all(&dir);
+        let good = dir.join("good.json");
+        std::fs::write(&good, "[1.5, 2.0, 0.75]").unwrap();
+        let sts = load_sts_calibration(Some(good.to_str().unwrap())).unwrap();
+        assert_eq!(sts.temperatures, vec![1.5, 2.0, 0.75]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

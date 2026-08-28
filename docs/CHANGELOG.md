@@ -7,6 +7,7 @@ All notable changes to DSpark will be documented in this file.
 ## [0.3.0] - 2026-08-28
 
 ### Added
+- **Wired DSpark confidence scheduling into the CLI** (`--calibration <file.json>` + `--prune-margin`, default 0.31): STS-calibrated confidences now drive both the scheduler and the flagship escalation floor; the greedy early-stop scheduler replaces the flat cap in `run --speculative`. Identity behavior when no calibration file is given. `ConfidenceHead::risk_for_confidence` exposed for consistent risk recomputation.
 - **AgentDeltaMemory (KDA-derived agent memory)**: delta-rule writes (correct-only-on-error), per-channel decay (`invariant`/`decision`/`transient`), key-bound rank-1 updates (DPLR binding), and a delta→0 convergence theorem used as a memory-stable early stop in the CEGAR loop. Rust + Python mirrors.
 - **Verification scaling (LLM-as-a-Verifier, arXiv:2607.05391)**:
   - PPT **soft updates** (Bradley-Terry of 1-20 scores, binary fallback, EQUAL→0.5);
