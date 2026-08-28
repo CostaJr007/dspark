@@ -5,7 +5,7 @@
 **Agent-Level Speculative Orchestration & Formal Dual-Engine Code Generation**
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/CostaJr007/dspark/actions)
-[![Tests](https://img.shields.io/badge/tests-37%20Rust%20%2B%2016%20Python-brightgreen)](https://github.com/CostaJr007/dspark/actions)
+[![Tests](https://img.shields.io/badge/tests-64%20Rust%20%2B%2037%20Python-brightgreen)](https://github.com/CostaJr007/dspark/actions)
 [![Live Pilot](https://img.shields.io/badge/accuracy-100%25%20pass%401%20%240.023-blue)](#-live-empirical-benchmarks)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange)](https://rust-lang.org)
@@ -22,12 +22,13 @@
 
 **DSpark** is an enterprise-grade AI coding platform and MCP server that elevates **Speculative Decoding** to the **Agent Orchestration Level**. It replaces expensive, brute-force model prompting with an efficient multi-tier architecture combining:
 
-1. ⚡ **Semi-Autoregressive Speculative Drafting**: Generates $N$ parallel code candidates using high-speed/local models bounded by asynchronous semaphores.
+1. ⚡ **Semi-Autoregressive Speculative Drafting**: Generates $N$ parallel code candidates using high-speed/local models bounded by asynchronous semaphores, plus a **sequential dependency pass** (`--sequential`): each draft is re-drafted conditioned on its accepted prefix, mitigating multi-modal collisions (DSpark sequential-head analog).
 2. 🌲 **Sequential AST Dependency Resolution**: Validates code syntax and topologically sorts function call graphs via Tree-Sitter/Regex before calling remote verification.
-3. 🔍 **Probabilistic Pivot Tournament (PPT)**: Evaluates candidates in $O(Nk)$ comparisons instead of naive all-pairs $O(N^2)$ using fine-grained reward estimation.
-4. 📊 **Confidence-Scheduled Pruning**: Analyzes cyclomatic complexity and state mutations locally on CPU, pruning 60–98% of redundant API calls without compromising safety.
-5. 🧠 **Dual-Engine CEGAR Refinement**: Epistemically isolates the **Creator** from the **Curator** (DeepSeek v4 Pro / Flash) with real sandbox execution and deterministic counterexamples (`failure_tail`).
-6. 🔌 **Universal MCP Server**: Integrates natively into Cursor, Claude Code, Claude Desktop, Antigravity, Windsurf, and Roo Code.
+3. 🔍 **Probabilistic Pivot Tournament (PPT)**: Evaluates candidates in $O(Nk)$ comparisons with **Bradley-Terry soft updates** over 1-20 scores (fallback to binary verdicts).
+4. 📊 **Confidence-Scheduled Pruning**: Analyzes cyclomatic complexity and state mutations locally on CPU, with **greedy early-stop scheduling** (`expected_accepted` accounting, non-anticipating admission) and **STS calibration** (Sequential Temperature Scaling) for the confidence head.
+5. 🧠 **Dual-Engine CEGAR Refinement**: Epistemically isolates the **Creator** from the **Curator** with real sandbox execution, deterministic counterexamples, **KDA-derived agent memory** (delta rule + per-channel decay + convergence early stop), **VOC progress tracking**, repeated evaluation $K$, and criteria decomposition (Specification/Output/Errors).
+6. 🎯 **Continuous Verifier Rewards**: Expectation over scoring-token logits (LLM-as-a-Verifier Eq. 3.1) with a two-stage workaround for logit-restricted APIs.
+7. 🔌 **Universal MCP Server**: Integrates natively into Cursor, Claude Code, Claude Desktop, Antigravity, Windsurf, and Roo Code.
 
 > **Theoretical Foundations**: Synthesized from [DSpark (DeepSeek & Peking University, 2026)](https://arxiv.org/abs/2607.05147) and [LLM-as-a-Verifier (Kwok et al., 2026)](https://arxiv.org/abs/2607.05391).
 
@@ -87,6 +88,29 @@ Asserted over the wire by `tests/tournament_scaling_test.rs`:
 | **$N = 20$** | 3 | 74 | 190 | **61.1%** |
 | **$N = 50$** | 3 | 194 | 1,225 | **84.2%** |
 | **$N = 100$** | 3 | 394 | 4,950 | **92.0%** |
+
+### 4. Verification-Scaling A/B (offline, deterministic, CI-asserted)
+
+Run: `cargo test -p dspark-core --test verification_scaling_test -- --nocapture` and `python bench/compare_cegar_improvements.py`.
+
+| Mechanism (paper) | Baseline | Improved | Gain |
+| :--- | :--- | :--- | :--- |
+| PPT soft updates (E1) | binary 65.0%, 1289 ties | **67.0%, 0 ties** | +2.0 pts |
+| Continuous reward, Eq 3.1 (E2) | discrete judge 84.0%, tie 6% | **100.0%, tie 0%** | +16 pts |
+| STS calibration (E3) | ECE 0.358 | **ECE 0.055** | **−84.7%** |
+| Greedy early-stop scheduler (E4) | 165 calls | **128 calls**, more failures/call | **−22%** |
+| KDA memory + VOC (B1+B2) | 189 iterations | **79 iterations** (−58%), outcome parity | work −58% |
+| Repeated evaluation K=3 (B3) | MAE 9.67 | **MAE 3.33** | **−66% error** |
+
+### 5. Real-API Pilot (48 tasks, ≈$0.05 total)
+
+| Configuration | Draft tier | Judge tier | PPT pick | First-pass scan | Tiered+Escalation |
+| :--- | :--- | :--- | :---: | :---: | :---: |
+| Same-tier judge | `gpt-3.5-turbo` | `gpt-3.5-turbo` | 70.0% | 90.0% | **100%** |
+| Stronger judge | `gpt-3.5-turbo` | `deepseek-chat` | **100%** | 100% | **100%** |
+| Strong drafts | `gpt-4o-mini` | `gpt-4o-mini` | 94.7% | 94.7% | **100%** |
+
+**Judge-tier finding**: judging drafts with the same model tier measurably hurts selection (PPT 70% vs first-pass 90%); a strictly stronger judge recovers 100% (+22.5 pts over random). The CLI and bench warn when `ranking tier == draft tier`.
 
 ---
 
@@ -184,6 +208,11 @@ dspark run "Implement a thread-safe LRU Cache with TTL expiration in Python" \
            --trajectories 4 \
            --pivots 2 \
            --out lru_cache.py
+
+# Optional: sequential dependency pass (on by default; disable with --sequential false)
+# Optional: separate ranking tier (a judge strictly stronger than the drafter
+#           measurably improves tournament selection)
+dspark run "..." --speculative --trajectories 4 --pivots 2 --ranking-model deepseek-chat
 ```
 
 ### 2. Audit Code Against Formal Contracts
@@ -261,11 +290,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## 🧪 Testing Suite
 
 ```bash
-# Run all Rust tests (37 tests)
+# Run all Rust tests (64 tests, including the offline verification-scaling A/B harness)
 cargo test -p dspark-core
 
-# Run all Python tests (16 tests)
+# Run all Python tests (37 tests, including the CEGAR improvement claims guard)
 pytest -v
+```
+
+Offline improvement benchmarks (deterministic, CI-asserted):
+
+```bash
+# Engine-level A/B (PPT soft, continuous rewards, STS, scheduler) - prints comparison tables
+cargo test -p dspark-core --test verification_scaling_test -- --nocapture
+
+# Pipeline-level A/B (KDA memory, VOC stagnation, repeated evaluation K)
+python bench/compare_cegar_improvements.py
 ```
 
 ---
