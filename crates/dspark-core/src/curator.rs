@@ -191,8 +191,9 @@ pub struct DeepSeekCurator {
 
 impl DeepSeekCurator {
     pub fn new() -> Result<Self, CuratorError> {
-        let spec = std::env::var("DEEPSEEK_MODEL")
+        let spec = std::env::var("DSPARK_CURATOR")
             .ok()
+            .or_else(|| std::env::var("DEEPSEEK_MODEL").ok())
             .filter(|s| !s.trim().is_empty())
             .unwrap_or_else(|| crate::pair::DsparkPair::load().curator);
         Ok(Self {
