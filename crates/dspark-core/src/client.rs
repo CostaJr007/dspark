@@ -354,6 +354,20 @@ impl OpenAIClient {
         })
     }
 
+    pub fn with_endpoint(
+        api_key: String,
+        base_url: String,
+        model: String,
+    ) -> Result<Self, ClientError> {
+        Ok(Self {
+            api_key,
+            base_url,
+            model,
+            http: http_client("DSpark/0.1.0", 120)?,
+            usage: Arc::new(UsageCounters::default()),
+        })
+    }
+
     pub async fn complete(
         &self,
         prompt: &str,
@@ -768,6 +782,18 @@ impl ModelClient {
             Ok(Self::Local(LocalLLMClient::new(
                 Some(base_url),
                 Some(model_name),
+            )?))
+        } else if lower.starts_with("groq:") {
+            let model_name = spec.split_once(':').map(|(_, m)| m).unwrap_or("qwen/qwen3.8-27b");
+            let api_key = env::var("GROQ_API_KEY")
+                .or_else(|_| env::var("OPENAI_API_KEY"))
+                .map_err(|_| ClientError::MissingApiKey("GROQ_API_KEY environment variable not set".into()))?;
+            let base_url = env::var("GROQ_BASE_URL")
+                .unwrap_or_else(|_| "https://api.groq.com/openai/v1".to_string());
+            Ok(Self::OpenAI(OpenAIClient::with_endpoint(
+                api_key,
+                base_url,
+                model_name.to_string(),
             )?))
         } else if lower.starts_with("openai:") || lower.contains("gpt-") {
             let model_name = spec.split_once(':').map(|(_, m)| m).unwrap_or(spec);
