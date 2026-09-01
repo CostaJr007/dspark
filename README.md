@@ -118,15 +118,48 @@ Run: `cargo test -p dspark-core --test verification_scaling_test -- --nocapture`
 
 DSpark includes a high-performance **FastMCP Server** exposing formal verification and speculative code generation to any AI-assisted editor.
 
-### 1. Cursor & Windsurf (`~/.cursor/mcp.json` or `mcp.json`)
+### 1. Antigravity & AGY CLI (`~/.gemini/config/plugins/dspark/mcp_config.json`)
 
 ```json
 {
   "mcpServers": {
     "dspark": {
-      "command": "python",
-      "args": ["-m", "dspark.mcp.server"],
-      "cwd": "C:/Users/adeil/dspark",
+      "command": "dspark",
+      "args": ["mcp"],
+      "env": {
+        "DSPARK_CURATOR": "gemini:gemini-2.5-flash"
+      }
+    }
+  }
+}
+```
+
+### 2. OpenCode (`~/.config/opencode/opencode.json`)
+
+```json
+{
+  "mcp": {
+    "dspark": {
+      "type": "local",
+      "command": ["dspark", "mcp"],
+      "environment": {
+        "OPENAI_BASE_URL": "https://integrate.api.nvidia.com/v1",
+        "OPENAI_API_KEY": "YOUR_API_KEY",
+        "OPENAI_MODEL": "meta/llama-3.2-90b-vision-instruct"
+      }
+    }
+  }
+}
+```
+
+### 3. Cursor & Windsurf (`~/.cursor/mcp.json` or `mcp.json`)
+
+```json
+{
+  "mcpServers": {
+    "dspark": {
+      "command": "dspark",
+      "args": ["mcp"],
       "env": {
         "DEEPSEEK_API_KEY": "your-deepseek-key",
         "OPENAI_API_KEY": "your-openai-key"
@@ -136,27 +169,23 @@ DSpark includes a high-performance **FastMCP Server** exposing formal verificati
 }
 ```
 
-### 2. Claude Desktop & Claude Code (`claude_desktop_config.json`)
+### 4. Claude Desktop & Claude Code (`~/.claude.json` or `claude_desktop_config.json`)
 
 ```json
 {
   "mcpServers": {
-    "dspark-dual-engine": {
-      "command": "python",
-      "args": ["-m", "dspark.mcp.server"],
-      "cwd": "C:/Users/adeil/dspark",
-      "env": {
-        "DEEPSEEK_API_KEY": "your-deepseek-key"
-      }
+    "dspark": {
+      "command": "dspark",
+      "args": ["mcp"]
     }
   }
 }
 ```
 
-### 3. Exposed MCP Tools
-- `dspark_audit`: Formally audits code against AST-inferred or user-provided I/O contracts in an isolated sandbox.
-- `dspark_refine`: Repairs failing code using epistemic isolation guided by concrete failing tracebacks (`failure_tail`).
-- `dspark_verify_pipeline`: Executes the full speculative multi-trajectory CEGAR loop end-to-end.
+### 5. Exposed MCP Tools
+- `dspark_audit_code`: Formally audits candidate code against I/O contracts and returns structured verdicts (`APPROVED` / `NEEDS_REVISION`) with counter-examples.
+- `dspark_refine_code`: Repairs failing code in a 1-shot CEGAR pass using the curator's feedback.
+- `dspark_arbitrate`: Executes the Probabilistic Pivot Tournament (PPT) to select or synthesize the optimal code from multiple candidates.
 
 ---
 

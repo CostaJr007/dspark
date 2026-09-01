@@ -248,8 +248,9 @@ async fn write_message(
     value: &Value,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let body = serde_json::to_string(value)?;
-    let framed = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
-    stdout.write_all(framed.as_bytes()).await?;
+    let line = format!("{}\n", body);
+    stdout.write_all(line.as_bytes()).await?;
     stdout.flush().await?;
     Ok(())
 }
+

@@ -1,4 +1,19 @@
-# Copy to %USERPROFILE%\.dspark\pair.toml  (not config.toml — that file is the TUI)
+# Copy to %USERPROFILE%\.dspark\pair.toml (Windows) or ~/.dspark/pair.toml (Linux/macOS)
+
+# 1. Antigravity / Gemini Native (Zero External Cost)
+# creator = "gemini:gemini-2.5-flash"
+# curator = "gemini:gemini-2.5-flash"
+
+# 2. Local Ollama (100% Offline)
+# creator = "ollama:qwen2.5-coder:7b"
+# curator = "ollama:deepseek-r1:7b"
+
+# 3. OpenAI-Compatible / NVIDIA NIM / Groq
+# creator = "gpt-4o-mini"
+# curator = "openai:meta/llama-3.2-90b-vision-instruct"
+
+# 4. DeepSeek Cloud
 creator = "gpt-4o-mini"
 curator = "deepseek-v4-pro"
 research = true
+
