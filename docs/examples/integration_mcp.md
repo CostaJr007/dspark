@@ -1,40 +1,79 @@
-# 🔌 Example: IDE Integration via FastMCP
+# MCP Integration
 
-DSpark exposes a native Model Context Protocol (MCP) server that connects with Cursor, Windsurf, Claude Code, Roo Code, and Google Antigravity.
+DSpark exposes MCP servers over stdio. There are two tool surfaces — use the one
+matching your launcher (do not mix tool names between them).
 
----
+## Surface A — `dspark_audit_code` / `dspark_refine_code` / `dspark_arbitrate`
 
-## 1. Starting the Server
+Provided by both:
+
+- Rust binary (recommended, no Python runtime needed): `dspark mcp`
+- Python CLI: `dspark mcp` (runs `dspark.mcp_server`, same tools)
+
+Verify a server responds (line-delimited JSON over stdio):
 
 ```bash
-dspark-mcp
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | dspark mcp
 ```
 
----
-
-## 2. Cursor / Claude Code Settings
-
-Add to your `mcp.json` or IDE MCP configuration:
+### Cursor / Windsurf (`mcp.json`)
 
 ```json
 {
   "mcpServers": {
     "dspark": {
-      "command": "dspark-mcp",
+      "command": "dspark",
+      "args": ["mcp"],
       "env": {
-        "DEEPSEEK_API_KEY": "sk-...",
-        "OPENAI_API_KEY": "sk-..."
+        "DEEPSEEK_API_KEY": "<your-deepseek-key>",
+        "OPENAI_API_KEY": "<your-openai-key>"
       }
     }
   }
 }
 ```
 
----
+### Claude Desktop / Claude Code
 
-## 3. Exposed MCP Tools
+Same shape under `mcpServers` in `claude_desktop_config.json` (Desktop) or
+`~/.claude.json` (Code).
 
-- `dspark_audit_code`: Performs independent adversarial verification on a code snippet against formal I/O contracts.
-- `dspark_refine_code`: Refines failing code using curator counterexamples.
-- `dspark_generate_contracts`: Synthesizes formal preconditions, postconditions, and invariants from docstrings.
-- `dspark_run_cegar`: Executes a full multi-turn CEGAR verification loop inside an isolated sandbox.
+### Antigravity / AGY CLI (`~/.gemini/config/plugins/dspark/mcp_config.json`)
+
+```json
+{
+  "mcpServers": {
+    "dspark": {
+      "command": "dspark",
+      "args": ["mcp"],
+      "env": {
+        "DSPARK_CURATOR": "gemini:gemini-2.5-flash"
+      }
+    }
+  }
+}
+```
+
+## Surface B — Python FastMCP (`dspark-mcp`)
+
+Installed by `pip install -e .` (entry point `dspark.mcp.server`, needs the
+`mcp` package). Different tool names:
+
+- `dspark_audit`, `dspark_refine`, `dspark_generate_contracts`, `dspark_run_cegar`
+
+```json
+{
+  "mcpServers": {
+    "dspark": {
+      "command": "dspark-mcp"
+    }
+  }
+}
+```
+
+## Tool reference (Surface A)
+
+- `dspark_audit_code`: audits candidate code against I/O contracts, returns
+  `APPROVED` / `NEEDS_REVISION` with counter-examples.
+- `dspark_refine_code`: 1-shot CEGAR repair of failing code from curator feedback.
+- `dspark_arbitrate`: Probabilistic Pivot Tournament over N candidates.

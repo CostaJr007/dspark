@@ -5,7 +5,7 @@
 **Agent-Level Speculative Orchestration & Formal Dual-Engine Code Generation**
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/CostaJr007/dspark/actions)
-[![Tests](https://img.shields.io/badge/tests-68%20Rust%20%2B%2038%20Python-brightgreen)](https://github.com/CostaJr007/dspark/actions)
+[![Tests](https://img.shields.io/badge/tests-71%20Rust%20%2B%2038%20Python-brightgreen)](https://github.com/CostaJr007/dspark/actions)
 [![Live Pilot](https://img.shields.io/badge/accuracy-100%25%20pass%401%20%240.023-blue)](#-live-empirical-benchmarks)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange)](https://rust-lang.org)
@@ -58,7 +58,7 @@ flowchart TD
 
 ## 🔬 Live Empirical Benchmarks
 
-All metrics below are regenerable directly via `python bench/run_real_bench.py` and asserted in CI.
+Sections 1–3 and 5 are live pilots: regenerable via `python bench/run_real_bench.py` (needs API keys, budget kill-switch ≈$0.05), but NOT asserted in CI. Section 4 (verification-scaling A/B) and section 6 (agent-level proof) are offline, deterministic, and CI-asserted — run them with `cargo test -p dspark-core` (no keys, no network).
 
 ### 1. Accuracy & Token Arbitrage (12 Real Complex Tasks)
 
@@ -97,7 +97,7 @@ Run: `cargo test -p dspark-core --test verification_scaling_test -- --nocapture`
 | :--- | :--- | :--- | :--- |
 | PPT soft updates (E1) | binary 65.0%, 1289 ties | **67.0%, 0 ties** | +2.0 pts |
 | Continuous reward, Eq 3.1 (E2) | discrete judge 84.0%, tie 6% | **100.0%, tie 0%** | +16 pts |
-| STS calibration (E3) | ECE 0.358 | **ECE 0.055** | **−84.7%** |
+| STS calibration (E3) | ECE 0.177 | **ECE 0.087** | **−50.6%** |
 | Greedy early-stop scheduler (E4) | 165 calls | **128 calls**, more failures/call | **−22%** |
 | KDA memory + VOC (B1+B2) | 189 iterations | **79 iterations** (−58%), outcome parity | work −58% |
 | Repeated evaluation K=3 (B3) | MAE 9.67 | **MAE 3.33** | **−66% error** |
@@ -112,11 +112,27 @@ Run: `cargo test -p dspark-core --test verification_scaling_test -- --nocapture`
 
 **Judge-tier finding**: judging drafts with the same model tier measurably hurts selection (PPT 70% vs first-pass 90%); a strictly stronger judge recovers 100% (+22.5 pts over random). The CLI and bench warn when `ranking tier == draft tier`.
 
+### 6. Agent-Level Proof (offline, deterministic, CI-asserted)
+
+Run: `cargo test -p dspark-core --test agent_level_proof_test -- --nocapture`.
+
+Composes the real `run --speculative` stages (drafter → confidence → scheduler → PPT → escalation) with scripted LLM tiers and REAL execution ground truth (`run_python_spec_oracle`, local python subprocess — no network/keys). 16 rounds over 4 doctest-grounded tasks under stated assumptions A1 (stronger judge) / A2 (capable repair) / A3 (oracle == correctness):
+
+| Metric | Result |
+| :--- | :---: |
+| Pool base rate → PPT winner | 25.0% → **87.5% (14/16)** |
+| PPT + repair (proof) | **100% (16/16)** |
+| Comparisons vs formula | **144/144 exact**, judge calls == comparisons |
+| Blocks pruned | **140/144 (97.2%)**, verified highest-risk-first |
+| Escalations (flagship bound) | **4/16** |
+
+Specified scheduler boundary (pinned by test): at the default `--prune-margin 0.31`, Medium blocks with confidence ≥ 0.70 pin survival at the 0.70 cap (risk 0.30 < 0.31) and prune — the verify path engages on High-risk blocks. Lower the margin if your workload needs Medium blocks verified.
+
 ---
 
 ## 🔌 IDE & MCP Integration
 
-DSpark includes a high-performance **FastMCP Server** exposing formal verification and speculative code generation to any AI-assisted editor.
+DSpark includes MCP servers (stdio) exposing formal verification and speculative code generation to any AI-assisted editor: the native Rust server (`dspark mcp`, no Python runtime needed) and a Python FastMCP server (`dspark-mcp`). Tool names differ per server — see [MCP integration](docs/examples/integration_mcp.md).
 
 ### 1. Antigravity & AGY CLI (`~/.gemini/config/plugins/dspark/mcp_config.json`)
 
@@ -182,7 +198,7 @@ DSpark includes a high-performance **FastMCP Server** exposing formal verificati
 }
 ```
 
-### 5. Exposed MCP Tools
+### 5. Exposed MCP Tools (`dspark mcp` surface)
 - `dspark_audit_code`: Formally audits candidate code against I/O contracts and returns structured verdicts (`APPROVED` / `NEEDS_REVISION`) with counter-examples.
 - `dspark_refine_code`: Repairs failing code in a 1-shot CEGAR pass using the curator's feedback.
 - `dspark_arbitrate`: Executes the Probabilistic Pivot Tournament (PPT) to select or synthesize the optimal code from multiple candidates.
@@ -273,12 +289,13 @@ import asyncio
 from dspark.pipeline.cegar import CEGARPipeline
 
 async def main():
+    # Default engines call live LLM APIs (needs DEEPSEEK_API_KEY etc.).
     pipeline = CEGARPipeline()
-    result = await pipeline.run(
-        task_description="Implement a Trie autocomplete data structure with frequency ranking"
+    state = await pipeline.execute(
+        user_spec="Implement a Trie autocomplete data structure with frequency ranking"
     )
-    print(f"Status: {result.status}")
-    print(f"Verified Code:\n{result.final_code}")
+    print(f"Verdict: {state.verdict}")
+    print(f"Verified Code:\n{state.current_draft}")
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -324,7 +341,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## 🧪 Testing Suite
 
 ```bash
-# Run all Rust tests (68 tests, including the offline verification-scaling A/B harness)
+# Run all Rust tests (71 tests: verification-scaling A/B, agent-level proof, prompt contracts)
 cargo test -p dspark-core
 
 # Run all Python tests (38 tests, including the CEGAR improvement claims guard)

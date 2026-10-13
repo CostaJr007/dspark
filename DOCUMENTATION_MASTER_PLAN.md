@@ -21,5 +21,5 @@ dspark/
 └── examples/                          # 📁 Executable Code Examples
     ├── leetcode_two_sum.py
     ├── speculative_demo.rs
-    └── mcp_integration.py
+    └── cegar_pipeline.py
 ```

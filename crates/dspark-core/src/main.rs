@@ -455,7 +455,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let confs = calibrate_block_confidences(sts.as_ref(), &raw);
                     let needs_verif = confs.iter().filter(|b| b.needs_verification).count();
                     println!("  Trajectory #{}: {}/{} blocks require verification", i + 1, needs_verif, confs.len());
-                    all_block_confs.extend(confs);
+                    // Global block ids: per-trajectory ids restart at 0 for every
+                    // trajectory, which makes plan.blocks_to_verify ambiguous.
+                    for mut b in confs {
+                        b.block_id = all_block_confs.len();
+                        all_block_confs.push(b);
+                    }
                 }
 
                 // Stage 3: Cost-Aware Verification Scheduler (greedy early-stop)

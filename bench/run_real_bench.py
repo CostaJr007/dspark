@@ -46,17 +46,26 @@ HUMANEVAL_URL = "https://raw.githubusercontent.com/openai/human-eval/master/data
 # ---------------------------------------------------------------- assumptions
 PRICE_PER_TOKEN = {  # EDIT ME to match your provider invoices.
     "gpt-4o-mini": {"in": 0.15e-6, "out": 0.60e-6},
+    "gpt-4o": {"in": 2.50e-6, "out": 10.00e-6},
     "gpt-3.5-turbo": {"in": 0.50e-6, "out": 1.50e-6},
     "gpt-3.5-turbo-0125": {"in": 0.50e-6, "out": 1.50e-6},
     "deepseek-v4-flash": {"in": 0.30e-6, "out": 0.90e-6},  # placeholder, conservative
     "deepseek-chat": {"in": 0.27e-6, "out": 1.10e-6},
     "deepseek-reasoner": {"in": 0.55e-6, "out": 2.19e-6},
+    # Groq free tier: actual $0 — tokens are still metered for $ projection.
+    "openai/gpt-oss-20b": {"in": 0.0, "out": 0.0},
+    "openai/gpt-oss-120b": {"in": 0.0, "out": 0.0},
+    "qwen/qwen3.8-27b": {"in": 0.0, "out": 0.0},
+    # Local Ollama daemon: actual $0 — tokens metered for $ projection.
+    "ollama:sovereign-gemma2:latest": {"in": 0.0, "out": 0.0},
+    "ollama:qwen2.5-coder:1.5b": {"in": 0.0, "out": 0.0},
+    "ollama:qwen2.5-coder:7b": {"in": 0.0, "out": 0.0},
 }
 BUDGET_CAP_USD = 0.45  # kill-switch per provider
 # deepseek-v4-flash is a REASONING model: its internal thinking shares the
 # completion-token budget, so the cap must leave room for it (empirically up
 # to ~1.6k chars). A tight cap yields empty/truncated code intermittently.
-MAX_COMPLETION_TOKENS = {"openai": 600, "deepseek": 4096}
+MAX_COMPLETION_TOKENS = {"openai": 600, "deepseek": 4096, "groq": 4096, "ollama": 1024}
 DRAFT_TEMPERATURES = [0.1, 0.3, 0.5, 0.7, 0.9]
 N_DRAFTS = len(DRAFT_TEMPERATURES)
 K_PIVOTS_REQUESTED = 2
@@ -79,11 +88,16 @@ def log(msg: str) -> None:
 class Budget:
     def __init__(self) -> None:
         self.spend: dict[str, float] = {}
+        self.tokens: dict[str, list] = {}  # model -> [prompt_tokens, completion_tokens]
 
     def add(self, model: str, usage: dict) -> float:
         p = PRICE_PER_TOKEN[model]
         cost = usage.get("prompt_tokens", 0) * p["in"] + usage.get("completion_tokens", 0) * p["out"]
         self.spend[model] = self.spend.get(model, 0.0) + cost
+        t = self.tokens.get(model, [0, 0])
+        t[0] += usage.get("prompt_tokens", 0)
+        t[1] += usage.get("completion_tokens", 0)
+        self.tokens[model] = t
         if self.spend[model] > BUDGET_CAP_USD:
             raise SystemExit(
                 f"BUDGET KILL-SWITCH: {model} reached ${self.spend[model]:.4f} > ${BUDGET_CAP_USD}"
@@ -97,8 +111,19 @@ class Budget:
 BUDGET = Budget()
 
 
+_GROQ_MODELS = {
+    "openai/gpt-oss-20b", "openai/gpt-oss-120b", "openai/gpt-oss-safeguard-20b",
+    "qwen/qwen3.8-27b", "allam-2-7b",
+}
+
+
 def get_provider(model: str) -> str:
-    return "deepseek" if ("deepseek" in model.lower() or "qwen" in model.lower()) else "openai"
+    m = model.lower()
+    if m in _GROQ_MODELS or m.startswith("groq:"):
+        return "groq"
+    if m.startswith("ollama:") or m.startswith("local:"):
+        return "ollama"
+    return "deepseek" if ("deepseek" in m or "qwen" in m) else "openai"
 
 
 def chat(model: str, messages: list[dict], temperature: float, provider: str | None = None) -> tuple[str, dict]:
@@ -106,11 +131,21 @@ def chat(model: str, messages: list[dict], temperature: float, provider: str | N
     if provider == "openai":
         url = "https://api.openai.com/v1/chat/completions"
         key = os.environ["OPENAI_API_KEY"]
+        api_model = model
+    elif provider == "groq":
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        key = os.environ["GROQ_API_KEY"]
+        api_model = model.split(":", 1)[1] if model.lower().startswith("groq:") else model
+    elif provider == "ollama":
+        url = "http://localhost:11434/v1/chat/completions"
+        key = "ollama"  # local daemon needs no real key
+        api_model = model.split(":", 1)[1] if ":" in model and model.lower().split(":")[0] in ("ollama", "local") else model
     else:
         url = "https://api.deepseek.com/chat/completions"
         key = os.environ["DEEPSEEK_API_KEY"]
+        api_model = model
     body = json.dumps({
-        "model": model,
+        "model": api_model,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": MAX_COMPLETION_TOKENS[provider],
@@ -118,17 +153,41 @@ def chat(model: str, messages: list[dict], temperature: float, provider: str | N
     req = urllib.request.Request(url, data=body, headers={
         "Content-Type": "application/json",
         "Authorization": f"Bearer {key}",
+        # Groq sits behind Cloudflare, which 403s urllib's default UA (error 1010).
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) dspark-bench/1.0",
     })
-    for attempt in range(2):
+    for attempt in range(7):
         try:
             with urllib.request.urlopen(req, timeout=90) as resp:
                 data = json.loads(resp.read())
             text = data["choices"][0]["message"]["content"] or ""
             usage = data.get("usage", {})
             BUDGET.add(model, usage)
+            if provider == "groq":
+                time.sleep(6.0)  # free-tier pacing: TPM is the binding constraint
+            elif provider == "ollama":
+                time.sleep(3.0)  # let the local daemon breathe between calls
             return text, usage
-        except Exception as e:  # noqa: BLE001 - one retry, then surface
-            if attempt == 1:
+        except urllib.error.HTTPError as e:
+            body = ""
+            try:
+                body = e.read().decode()[:300]
+            except Exception:
+                pass
+            if e.code == 429 and attempt < 6:
+                import re as _re
+                m = _re.search(r"try again in ([\d.]+)s", body)
+                instructed = float(m.group(1)) if m else 0.0
+                wait = max(instructed, 20.0 * (2 ** min(attempt, 3)))
+                log(f"    429 rate-limited, waiting {wait:.1f}s (attempt {attempt + 1}/7)")
+                time.sleep(wait)
+                continue
+            if attempt == 6:
+                raise
+            log(f"    retry after error: {e}")
+            time.sleep(3)
+        except Exception as e:  # noqa: BLE001 - retry, then surface
+            if attempt == 6:
                 raise
             log(f"    retry after error: {e}")
             time.sleep(3)
@@ -431,6 +490,7 @@ def pilot_task(task: dict, out_rows: list, cheap_model: str = "gpt-4o-mini",
         "refined_pass": refined_pass,
         "D_full_pass": final_pass,
         "budget_snapshot": {k: round(v, 5) for k, v in BUDGET.spend.items()},
+        "token_snapshot": {k: list(v) for k, v in BUDGET.tokens.items()},
     })
 
 
@@ -531,6 +591,9 @@ def main() -> None:
     ap.add_argument("--resume", metavar="RESULTS_JSONL", default=None,
                     help="resume: skip task_ids already present in the given "
                          "results file and append new rows to it")
+    ap.add_argument("--only", metavar="IDS", default=None,
+                    help="comma-separated task ids to run (e.g. --only create-lru-ttl,create-trie-autocomplete); "
+                         "useful for batching metered backends together with --resume")
     args = ap.parse_args()
     if args.smoke:
         args.limit = 3
@@ -540,6 +603,11 @@ def main() -> None:
     tasks = load_humaneval(args.limit)
     if not args.skip_creation:
         tasks += load_creation_tasks()
+    if args.only:
+        want = {t.strip() for t in args.only.split(",") if t.strip()}
+        tasks = [t for t in tasks if t["id"] in want]
+        if not tasks:
+            sys.exit(f"--only: no matching task ids (want {sorted(want)})")
 
     out_path = RESULTS_DIR / f"results_{int(time.time())}.jsonl"
     rows: list[dict] = []
@@ -563,8 +631,20 @@ def main() -> None:
             "first-pass 90%; a stronger judge (--judge-model) gives PPT 100% on the same drafts.")
     try:
         for t in tasks:
-            pilot_task(t, rows, cheap_model=args.cheap_model,
-                       flagship_model=args.flagship_model, judge_model=args.judge_model)
+            try:
+                pilot_task(t, rows, cheap_model=args.cheap_model,
+                           flagship_model=args.flagship_model, judge_model=args.judge_model)
+            except urllib.error.HTTPError as e:
+                # Sustained rate limiting: one long cool-down, one retry of the
+                # same task, then stop gracefully keeping completed rows.
+                log(f"HTTP {e.code} on {t['id']}: cooling down 180s and retrying once")
+                time.sleep(180)
+                try:
+                    pilot_task(t, rows, cheap_model=args.cheap_model,
+                               flagship_model=args.flagship_model, judge_model=args.judge_model)
+                except urllib.error.HTTPError as e2:
+                    log(f"HTTP {e2.code} persists; stopping gracefully with {len(rows)} rows kept")
+                    break
             with open(out_path, "w", encoding="utf-8") as f:
                 for r in rows:
                     f.write(json.dumps(r) + "\n")
