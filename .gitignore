@@ -33,3 +33,6 @@ Thumbs.db
 
 # Generated smoke output
 examples/out/
+
+# Test caches
+.pytest_cache/

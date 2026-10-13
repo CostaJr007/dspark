@@ -5,7 +5,7 @@
 **Agent-Level Speculative Orchestration & Formal Dual-Engine Code Generation**
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/CostaJr007/dspark/actions)
-[![Tests](https://img.shields.io/badge/tests-64%20Rust%20%2B%2037%20Python-brightgreen)](https://github.com/CostaJr007/dspark/actions)
+[![Tests](https://img.shields.io/badge/tests-68%20Rust%20%2B%2038%20Python-brightgreen)](https://github.com/CostaJr007/dspark/actions)
 [![Live Pilot](https://img.shields.io/badge/accuracy-100%25%20pass%401%20%240.023-blue)](#-live-empirical-benchmarks)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange)](https://rust-lang.org)
@@ -324,10 +324,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## 🧪 Testing Suite
 
 ```bash
-# Run all Rust tests (64 tests, including the offline verification-scaling A/B harness)
+# Run all Rust tests (68 tests, including the offline verification-scaling A/B harness)
 cargo test -p dspark-core
 
-# Run all Python tests (37 tests, including the CEGAR improvement claims guard)
+# Run all Python tests (38 tests, including the CEGAR improvement claims guard)
 pytest -v
 ```
 
