@@ -46,6 +46,7 @@ HUMANEVAL_URL = "https://raw.githubusercontent.com/openai/human-eval/master/data
 # ---------------------------------------------------------------- assumptions
 PRICE_PER_TOKEN = {  # EDIT ME to match your provider invoices.
     "gpt-4o-mini": {"in": 0.15e-6, "out": 0.60e-6},
+    "gpt-4o": {"in": 2.50e-6, "out": 10.00e-6},
     "gpt-3.5-turbo": {"in": 0.50e-6, "out": 1.50e-6},
     "gpt-3.5-turbo-0125": {"in": 0.50e-6, "out": 1.50e-6},
     "deepseek-v4-flash": {"in": 0.30e-6, "out": 0.90e-6},  # placeholder, conservative
