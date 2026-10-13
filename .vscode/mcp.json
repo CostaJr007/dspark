@@ -1,0 +1,11 @@
+{
+    "servers": {
+        "dspark": {
+            "command": "dspark",
+            "args": ["mcp"],
+            "env": {
+                "DSPARK_CURATOR": "deepseek-v4-pro"
+            }
+        }
+    }
+}
