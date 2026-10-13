@@ -132,7 +132,7 @@ Specified scheduler boundary (pinned by test): at the default `--prune-margin 0.
 
 ## 🔌 IDE & MCP Integration
 
-DSpark includes a high-performance **FastMCP Server** exposing formal verification and speculative code generation to any AI-assisted editor.
+DSpark includes MCP servers (stdio) exposing formal verification and speculative code generation to any AI-assisted editor: the native Rust server (`dspark mcp`, no Python runtime needed) and a Python FastMCP server (`dspark-mcp`). Tool names differ per server — see [MCP integration](docs/examples/integration_mcp.md).
 
 ### 1. Antigravity & AGY CLI (`~/.gemini/config/plugins/dspark/mcp_config.json`)
 
@@ -198,7 +198,7 @@ DSpark includes a high-performance **FastMCP Server** exposing formal verificati
 }
 ```
 
-### 5. Exposed MCP Tools
+### 5. Exposed MCP Tools (`dspark mcp` surface)
 - `dspark_audit_code`: Formally audits candidate code against I/O contracts and returns structured verdicts (`APPROVED` / `NEEDS_REVISION`) with counter-examples.
 - `dspark_refine_code`: Repairs failing code in a 1-shot CEGAR pass using the curator's feedback.
 - `dspark_arbitrate`: Executes the Probabilistic Pivot Tournament (PPT) to select or synthesize the optimal code from multiple candidates.
@@ -289,12 +289,13 @@ import asyncio
 from dspark.pipeline.cegar import CEGARPipeline
 
 async def main():
+    # Default engines call live LLM APIs (needs DEEPSEEK_API_KEY etc.).
     pipeline = CEGARPipeline()
-    result = await pipeline.run(
-        task_description="Implement a Trie autocomplete data structure with frequency ranking"
+    state = await pipeline.execute(
+        user_spec="Implement a Trie autocomplete data structure with frequency ranking"
     )
-    print(f"Status: {result.status}")
-    print(f"Verified Code:\n{result.final_code}")
+    print(f"Verdict: {state.verdict}")
+    print(f"Verified Code:\n{state.current_draft}")
 
 if __name__ == "__main__":
     asyncio.run(main())
