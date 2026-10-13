@@ -63,7 +63,36 @@ struct ChatCompletionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     thinking: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_effort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<u32>,
+}
+
+/// DeepSeek thinking effort (docs: none | low | high | max). `minimal` maps to
+/// `low`; `medium`/`xhigh` map to `high`. Unset means the API default (`high`).
+fn reasoning_effort_from_env() -> Option<String> {
+    let raw = env::var("DSPARK_REASONING_EFFORT").ok()?;
+    match raw.trim().to_lowercase().as_str() {
+        "none" | "low" | "high" | "max" => Some(raw.trim().to_lowercase()),
+        "minimal" => Some("low".to_string()),
+        "medium" | "xhigh" => Some("high".to_string()),
+        _ => None,
+    }
+}
+
+/// Output cap (docs: 1..=393216). Unset means the API documented default
+/// (8K non-thinking, 64K thinking, 128K with effort `max`).
+fn max_tokens_from_env() -> Option<u32> {
+    env::var("DSPARK_MAX_TOKENS")
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok())
+        .map(|n| n.clamp(1, 393_216))
+}
+
+fn env_flag(name: &str) -> bool {
+    env::var(name)
+        .map(|v| matches!(v.trim().to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+        .unwrap_or(false)
 }
 
 fn http_client(ua: &str, secs: u64) -> Result<reqwest::Client, ClientError> {
@@ -293,7 +322,14 @@ impl DeepSeekClient {
             content: prompt.into(),
         });
 
-        // JSON mode + thinking is unsupported and can yield empty/truncated bodies.
+        // DeepSeek docs: thinking is enabled by default (effort `high`). JSON mode
+        // historically returned empty/truncated bodies with thinking on, so it
+        // disables thinking unless DSPARK_JSON_THINKING=1 opts back in.
+        // DSPARK_REASONING_EFFORT=none|low|high|max and DSPARK_MAX_TOKENS=1..393216
+        // follow the documented parameters; when unset the API defaults apply.
+        let effort = reasoning_effort_from_env();
+        let thinking_disabled =
+            effort.as_deref() == Some("none") || (json_format && !env_flag("DSPARK_JSON_THINKING"));
         let req_body = ChatCompletionRequest {
             model: self.model.clone(),
             messages,
@@ -304,12 +340,11 @@ impl DeepSeekClient {
                 None
             },
             stream: Some(false),
-            thinking: if json_format {
-                Some(serde_json::json!({ "type": "disabled" }))
-            } else {
-                None
-            },
-            max_tokens: Some(8192),
+            thinking: Some(serde_json::json!({
+                "type": if thinking_disabled { "disabled" } else { "enabled" }
+            })),
+            reasoning_effort: if thinking_disabled { None } else { effort },
+            max_tokens: max_tokens_from_env(),
         };
 
         post_chat(
@@ -398,6 +433,7 @@ impl OpenAIClient {
             },
             stream: Some(false),
             thinking: None,
+            reasoning_effort: None,
             max_tokens: Some(8192),
         };
 
@@ -625,6 +661,7 @@ impl LocalLLMClient {
             },
             stream: Some(false),
             thinking: None,
+            reasoning_effort: None,
             max_tokens: Some(8192),
         };
 
